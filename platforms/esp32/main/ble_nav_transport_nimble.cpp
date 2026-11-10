@@ -1,3 +1,4 @@
+#include "device_ble_capabilities.hpp"
 #include "ble_nav_transport_nimble.h"
 
 #include <algorithm>
@@ -643,20 +644,9 @@ void BleNavTransport::send_connection_status(
   status.state = state;
   status.minimum_version = moto::ble::kProtocolVersion;
   status.maximum_version = moto::ble::kProtocolVersion;
-  status.capabilities = moto::ble::CapabilityNavigation |
-                        moto::ble::CapabilityRouteGeometry |
-                        moto::ble::CapabilityTraffic |
-                        moto::ble::CapabilityMediaState |
-                        moto::ble::CapabilityTouchCommands |
-                        moto::ble::CapabilityMusicCommands |
-#if !defined(MOTO_BOARD_SMARTRING_PLUS)
-                        moto::ble::CapabilityShortcuts |
-#if defined(MOTO_BOARD_SMARTRING_PLUS)
-                        moto::ble::CapabilityPresetRoutes |
-#endif
-#endif
-                        moto::ble::CapabilityCommandAck |
-                        moto::ble::CapabilityMapScene;
+  status.capabilities = moto::esp32::device_capabilities();
+  ESP_LOGI(kTag, "device capabilities=0x%08lx state=%u",
+           static_cast<unsigned long>(status.capabilities), static_cast<unsigned>(state));
   status.session_id = session_id;
   status.max_frame_size =
       static_cast<std::uint16_t>(negotiated_frame_size());
