@@ -7,6 +7,10 @@ on:
     paths: ['platforms/ios/**', 'shared/**', 'scripts/ios/**', '.github/workflows/ios-sideload.yml']
   workflow_dispatch:
     inputs:
+      run_tests:
+        description: Run simulator tests before packaging
+        type: boolean
+        default: true
       runner:
         description: macOS build runner
         type: choice
@@ -37,6 +41,8 @@ jobs:
           xcodebuild -version
           xcodegen generate --spec platforms/ios/project.yml
       - name: Select available iPhone simulator
+        if: github.event_name != 'workflow_dispatch' || inputs.run_tests
+        timeout-minutes: 3
         id: simulator
         run: |
           python3 - <<'PY'
@@ -49,6 +55,7 @@ jobs:
               out.write('id=' + iphones[0]['udid'] + '\n')
           PY
       - name: App unit tests and offline gateway UI tests
+        if: github.event_name != 'workflow_dispatch' || inputs.run_tests
         run: |
           xcodebuild test -project platforms/ios/MotoGPS.xcodeproj -scheme MotoGPS \
             -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.id }}' \
