@@ -43,6 +43,7 @@ targets:
     info:
       path: App/Info.plist
       properties:
+        UIUserInterfaceStyle: Dark
         CFBundleDisplayName: MOTO GPS
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
@@ -70,7 +71,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: org.example.motogps
         PRODUCT_NAME: MOTO GPS
         MARKETING_VERSION: 0.3.2
-        CURRENT_PROJECT_VERSION: 8
+        CURRENT_PROJECT_VERSION: 9
         SWIFT_VERSION: 5.0
         SWIFT_STRICT_CONCURRENCY: targeted
         SWIFT_OBJC_BRIDGING_HEADER: App/MotoGPS-Bridging-Header.h

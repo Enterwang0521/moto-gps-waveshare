@@ -29,7 +29,7 @@ struct ContentView: View {
                     }
                 }
         }
-        .tint(.black)
+        .tint(.accentColor)
         .onChange(of: model.destinationQuery) { _, _ in model.destinationQueryDidChange() }
         .onChange(of: model.selectedPlace) { _, place in
             if place != nil { searchFocused = false }
@@ -88,7 +88,8 @@ struct ContentView: View {
                         Spacer()
                         Text("HOME / 01").font(.system(size: 11, weight: .bold)).tracking(1)
                             .padding(.horizontal, 10).padding(.vertical, 6)
-                            .background(Color(red: 1, green: 0.8, blue: 0), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .foregroundStyle(Color(red: 0.90, green: 0.73, blue: 0.28))
+                            .background(Color(red: 0.16, green: 0.13, blue: 0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                     Text("今天想去哪里？").font(.system(size: 28, weight: .black))
                     Text("将路线留在视线里，将注意力留给路况。")
@@ -155,7 +156,7 @@ struct ContentView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(Color.white)
+        .background(Color.black)
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle("出发")
         .toolbar {
@@ -413,7 +414,7 @@ struct ContentView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(Color.white)
+        .background(Color.black)
         .navigationTitle("路线")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -551,7 +552,7 @@ struct ContentView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(Color.white)
+        .background(Color.black)
         .navigationTitle(model.isDemoActive ? "演示导航" : "导航中")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -592,7 +593,7 @@ struct ContentView: View {
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.roundedRectangle(radius: 16))
             .controlSize(.large)
-            .tint(model.isNavigationActive ? Color(red: 0.71, green: 0.34, blue: 0) : .black)
+            .tint(model.isNavigationActive ? Color(red: 0.71, green: 0.34, blue: 0) : .accentColor)
             .disabled(!model.isNavigationActive && (model.selectedPlace == nil || model.isPlanningRoutePreview))
             .accessibilityIdentifier("primary-navigation-action")
         }

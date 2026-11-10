@@ -7,6 +7,7 @@ struct MotoGPSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(model: model)
+                .preferredColorScheme(.dark)
         }
     }
 }
