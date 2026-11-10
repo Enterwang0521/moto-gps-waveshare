@@ -766,6 +766,9 @@ final class ESP32BLECentral: NSObject {
         let timeFrames = try codec.encodeCurrentTime()
         var resetQueuedFrames = false
         if outboundFrames.count + frames.count + timeFrames.count > 128 {
+            if presetTransferActive {
+                throw PresetRouteError.message("蓝牙队列已满，传输未完成，请重新传输")
+            }
             // Preserve the newest complete snapshot rather than growing without
             // bound while iOS waits for CoreBluetooth backpressure to clear.
             outboundFrames.removeAll(keepingCapacity: true)
@@ -784,7 +787,7 @@ final class ESP32BLECentral: NSObject {
     }
 
     private func scheduleNavigationTransmit() {
-        guard protocolReady,
+        guard !presetTransferActive, protocolReady,
               codec != nil,
               pendingNavigationState != nil,
               navigationTransmitTask == nil
@@ -808,7 +811,7 @@ final class ESP32BLECentral: NSObject {
     }
 
     private func flushPendingNavigationState() {
-        guard protocolReady,
+        guard !presetTransferActive, protocolReady,
               let codec,
               let state = pendingNavigationState
         else { return }
@@ -862,7 +865,7 @@ final class ESP32BLECentral: NSObject {
     }
 
     private func flushPendingMediaState() {
-        guard protocolReady,
+        guard !presetTransferActive, protocolReady,
               let codec,
               let state = pendingMediaState
         else { return }
@@ -876,7 +879,7 @@ final class ESP32BLECentral: NSObject {
     }
 
     private func flushPendingMapScene() {
-        guard protocolReady,
+        guard !presetTransferActive, protocolReady,
               peerCapabilities & Self.mapSceneCapability != 0,
               let codec,
               let scene = pendingMapScene,
@@ -906,7 +909,22 @@ final class ESP32BLECentral: NSObject {
             throw PresetRouteError.message("请连接支持 TF 路线的新固件；路线最大 256 KiB，一次传输一条")
         }
         presetTransferActive = true
-        defer { presetTransferActive = false; presetAck = nil }
+        defer {
+            presetTransferActive = false; presetAck = nil
+            scheduleNavigationTransmit()
+            flushPendingMediaState()
+            flushPendingMapScene()
+        }
+        // Drain complete previously queued messages before reserving the link.
+        // Heartbeats and command ACKs continue during transfer.
+        for _ in 0..<100 {
+            guard protocolReady else { throw PresetRouteError.message("蓝牙已断开，请重新传输") }
+            if outboundFrames.isEmpty && !writeWithResponseInFlight { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        guard outboundFrames.isEmpty && !writeWithResponseInFlight else {
+            throw PresetRouteError.message("蓝牙队列繁忙，请稍后重试传输")
+        }
         let crc = PresetRouteLibrary.crc32(data)
         func packet(_ operation: UInt8, _ offset: Int, _ bytes: Data) async throws {
             guard protocolReady, let codec else { throw PresetRouteError.message("蓝牙已断开，请重新传输") }
@@ -919,12 +937,13 @@ final class ESP32BLECentral: NSObject {
                 guard protocolReady else { throw PresetRouteError.message("蓝牙已断开，请重新传输") }
                 if let status = presetAck?.status {
                     guard status == 0 || status == 4 else {
-                        throw PresetRouteError.message("设备拒绝写入，请检查 TF 卡、剩余空间和固件")
+                        let stage = operation == 1 ? "开始写入" : operation == 3 ? "提交校验" : "写入数据"
+                        throw PresetRouteError.message("\(stage)失败（\(offset)/\(data.count) 字节），请检查 TF 卡后重试")
                     }
                     return
                 }
             }
-            throw PresetRouteError.message("设备确认超时，旧路线仍保留，请重试")
+            throw PresetRouteError.message("设备确认超时（\(offset)/\(data.count) 字节），旧路线仍保留，请重试")
         }
         try await packet(1, 0, Data())
         for offset in stride(from: 0, to: data.count, by: 512) {

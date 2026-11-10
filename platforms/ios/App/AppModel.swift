@@ -375,10 +375,15 @@ final class AppModel: ObservableObject {
     func isPresetTransferred(_ route: SavedPresetRoute) -> Bool { presetLibrary.isTransferred(route) }
     func transferPreset(_ route: SavedPresetRoute) async {
         guard presetTransferProgress == nil else { return }
+        guard !isNavigationActive else {
+            presetMessage = "请先结束导航再传输 TF 路线"
+            return
+        }
         presetTransferProgress = 0
         defer { presetTransferProgress = nil }
         do {
             let data = try JSONEncoder().encode(route)
+            presetMessage = "准备传输 \(route.name)，共 \(data.count) 字节"
             try await bluetooth.uploadPreset(slot: route.slot, token: route.token, name: route.name,
                 data: data) { self.presetTransferProgress = $0 }
             try presetLibrary.transferred(route)
@@ -403,6 +408,10 @@ final class AppModel: ObservableObject {
     }
     @discardableResult
     func startPreset(token: UInt32) -> BLECommandDisposition {
+        guard presetTransferProgress == nil else {
+            presetMessage = "正在写入 TF 卡，请等待传输完成后再开始导航"
+            return .invalidState
+        }
         guard let saved = presetLibrary.find(token: token), !isUpdatingGateway else {
             presetMessage = "手机中没有对应路线，请重新传输 TF 路线"
             return .invalidState

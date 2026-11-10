@@ -23,28 +23,41 @@ struct PresetRoutesView: View {
                             .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.presetTransferProgress != nil)
                     }
                 }
-                Section("四条预设路线") {
-                    if model.savedPresetRoutes.isEmpty {
+                if model.savedPresetRoutes.isEmpty {
+                    Section("四条预设路线") {
                         Text("请先搜索终点、规划并选择路线，再打开预设路线保存。")
                     }
-                    ForEach(model.savedPresetRoutes) { route in
+                }
+                ForEach(model.savedPresetRoutes) { route in
+                    Section("\(route.slot). \(route.name)") {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("\(route.slot). \(route.name)").font(.headline)
                             Text("\(route.destination.name) · \(Int(route.route.totalDistanceM)) m")
                                 .font(.caption).foregroundStyle(.secondary)
                             Text(model.isPresetTransferred(route) ? "已传输；以圆屏 TF 列表为准" : "尚未传到 TF 卡")
                                 .font(.caption).foregroundStyle(.secondary)
-                            Button("传到圆屏 TF 卡") { Task { await model.transferPreset(route) } }
-                                .disabled(model.presetTransferProgress != nil)
-                            Button("在手机中使用") { model.startPreset(token: route.token) }
-                        }.padding(.vertical, 6)
+                        }
+                        // Each action has its own Form row and explicit button style.
+                        // Automatic buttons in one row can share the row's tap action.
+                        Button("传到圆屏 TF 卡") { Task { await model.transferPreset(route) } }
+                            .buttonStyle(.borderless)
+                            .accessibilityIdentifier("preset-transfer-\(route.slot)")
+                            .disabled(model.presetTransferProgress != nil || model.isNavigationActive)
+                        Button("在手机中使用") { model.startPreset(token: route.token) }
+                            .buttonStyle(.borderless)
+                            .accessibilityIdentifier("preset-use-\(route.slot)")
+                            .disabled(model.presetTransferProgress != nil)
                     }
                 }
+                Section {
+                    Text(model.isNavigationActive ? "当前正在导航，请先结束导航再传输路线。" : "当前未导航，传输路线不会开始导航。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("preset-navigation-status")
+                }
                 if let progress = model.presetTransferProgress {
-                    Section { ProgressView("正在传输，请保持 App 前台", value: progress) }
+                    Section { ProgressView("正在传输 \(Int(progress * 100))%，请保持 App 前台", value: progress) }
                 }
                 if let message = model.presetMessage {
-                    Section { Text(message).font(.footnote) }
+                    Section { Text(message).font(.footnote).accessibilityIdentifier("preset-status-message") }
                 }
                 Section {
                     Text("TF 路线包含折线与转向信息，不包含离线地图。首次调取使用保存路线，偏航重算和实时路况仍需网络；离起点较远时应先检查路线是否适用。手机保留一份对应路线，重装 App 或换手机后需重新传输。")
