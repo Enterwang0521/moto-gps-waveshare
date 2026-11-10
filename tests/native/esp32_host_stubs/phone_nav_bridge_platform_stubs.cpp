@@ -371,3 +371,4 @@ uint32_t phone_nav_bridge_last_distance_to_maneuver_m() {
 }
 
 }  // namespace moto::test
+extern "C" void moto_nav_ui_sync_clock(uint32_t) {}
