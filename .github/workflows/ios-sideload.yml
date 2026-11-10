@@ -6,6 +6,15 @@ on:
   pull_request:
     paths: ['platforms/ios/**', 'shared/**', 'scripts/ios/**', '.github/workflows/ios-sideload.yml']
   workflow_dispatch:
+    inputs:
+      runner:
+        description: macOS build runner
+        type: choice
+        default: macos-latest
+        options:
+          - macos-latest
+          - macos-15
+          - macos-15-intel
 
 permissions:
   contents: read
@@ -16,7 +25,7 @@ concurrency:
 
 jobs:
   ios:
-    runs-on: macos-latest
+    runs-on: ${{ inputs.runner || 'macos-latest' }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
