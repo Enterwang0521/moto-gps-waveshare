@@ -50,6 +50,7 @@ class PhoneNavBridge {
   std::string preset_status_="SELECT ROUTE";
   uint16_t preset_command_id_=0;
   uint64_t preset_deadline_ms_=0;
+  bool phone_preset_support_=false;
   static void preset_selected(uint8_t slot,void* context);
 #endif
   struct GeometryAssembly {

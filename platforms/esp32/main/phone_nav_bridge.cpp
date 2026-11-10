@@ -545,6 +545,9 @@ moto::ble::AckStatus PhoneNavBridge::on_message(
           {
             const std::lock_guard<std::mutex> lock(state_mutex_);
             phone_session_id_ = value.session_id;
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+            phone_preset_support_=(value.capabilities & moto::ble::CapabilityPresetRoutes)!=0;
+#endif
             music_page_enabled_ = media;
 #if defined(MOTO_BOARD_SMARTRING_PLUS)
             // SmartRing firmware does not offer the shortcuts page.
@@ -1113,6 +1116,12 @@ void PhoneNavBridge::page_changed(moto_ui_page_t page, void* context) {
     self->snapshot_.display_page = map_nav_page(page);
   }
   self->present_navigation();
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+  if(page==MOTO_UI_PAGE_PRESETS) {
+    const std::lock_guard<std::mutex> lock(self->state_mutex_);
+    if(!self->phone_preset_support_)return;
+  }
+#endif
   self->send_page_command(page);
 }
 
@@ -1198,6 +1207,9 @@ void PhoneNavBridge::preset_selected(uint8_t slot,void* context) {
   {
     const std::lock_guard<std::mutex> lock(self->state_mutex_);
     if(!self->link_active_){self->preset_status_="CONNECT IPHONE";self->request_render(RenderNavigation);return;}
+    if(!self->phone_preset_support_) {
+      self->preset_status_="UPDATE PHONE APP";self->request_render(RenderNavigation);return;
+    }
     self->preset_command_id_=self->next_command_id_;
     self->preset_deadline_ms_=monotonic_ms()+10000;
     self->preset_status_="REQUESTING PHONE";

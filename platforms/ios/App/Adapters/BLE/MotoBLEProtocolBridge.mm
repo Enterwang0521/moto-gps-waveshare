@@ -248,6 +248,7 @@ moto::ble::ConnectionStatus PhoneConnectionStatus(
                         moto::ble::CapabilityTouchCommands |
                         moto::ble::CapabilityMusicCommands |
                         moto::ble::CapabilityShortcuts |
+                        moto::ble::CapabilityPresetRoutes |
                         moto::ble::CapabilityCommandAck |
                         moto::ble::CapabilityMapScene;
   status.session_id = session_id;
