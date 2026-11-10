@@ -147,3 +147,21 @@ target_compile_features(preset_route_store_tests PRIVATE cxx_std_17)
 # Assertions are the checks in this focused persistence executable, including Release CI.
 target_compile_options(preset_route_store_tests PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-UNDEBUG>)
 add_test(NAME preset_route_store_tests COMMAND preset_route_store_tests)
+
+# Compile the actual B UI, including board-only page availability, rather than
+# relying on the generic 466px UI tests to cover the 360px SmartRing variant.
+add_executable(smartring_presets_page_tests
+  smartring_presets_page_tests.cpp
+  ../../shared/nav_ui/src/moto_nav_ui.cpp
+  ../../shared/nav_ui/assets/moto_font_nav_16.c
+  ../../platforms/smartring/assets/moto_music_font_16_a.c
+  ../../platforms/smartring/assets/moto_music_font_16_b.c
+  ../../platforms/smartring/assets/moto_pixel_16.c
+  ../../platforms/smartring/assets/moto_pixel_24.c
+  ../../platforms/smartring/assets/moto_pixel_48.c)
+target_include_directories(smartring_presets_page_tests PRIVATE ../../shared/nav_ui/include)
+target_compile_definitions(smartring_presets_page_tests PRIVATE
+  MOTO_BOARD_SMARTRING_PLUS=1 MOTO_UI_CANVAS_WIDTH=360 MOTO_UI_CANVAS_HEIGHT=360)
+target_link_libraries(smartring_presets_page_tests PRIVATE lvgl)
+target_compile_features(smartring_presets_page_tests PRIVATE cxx_std_17)
+add_test(NAME smartring_presets_page_tests COMMAND smartring_presets_page_tests)

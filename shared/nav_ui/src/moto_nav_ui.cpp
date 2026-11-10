@@ -26,6 +26,11 @@ LV_FONT_DECLARE(moto_pixel_48);
 #endif
 
 namespace {
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+constexpr bool kPresetsPageEnabled = true;
+#else
+constexpr bool kPresetsPageEnabled = false;
+#endif
 lv_obj_t *clock_label = nullptr;
 lv_timer_t *clock_timer = nullptr;
 bool clock_synced = false;
@@ -252,11 +257,6 @@ struct Ui {
     void *demo_callback_context = nullptr;
     bool music_page_enabled = true;
     bool shortcuts_page_enabled = false;
-#if defined(MOTO_BOARD_SMARTRING_PLUS)
-    bool presets_page_enabled = true;
-#else
-    bool presets_page_enabled = false;
-#endif
     lv_obj_t *preset_buttons[4]{};
     lv_obj_t *preset_labels[4]{};
     lv_obj_t *preset_status = nullptr;
@@ -367,7 +367,7 @@ void update_page_dots() {
         lv_obj_set_x(ui.page_dots[i], px(134 + i * 22 - (active ? 5 : 0)));
         const bool available = (i != MOTO_UI_PAGE_MUSIC || ui.music_page_enabled) &&
                                (i != MOTO_UI_PAGE_SHORTCUTS || ui.shortcuts_page_enabled) &&
-                               (i != MOTO_UI_PAGE_PRESETS || ui.presets_page_enabled);
+                               (i != MOTO_UI_PAGE_PRESETS || kPresetsPageEnabled);
         if(ui.page_dots_visible && available) {
             lv_obj_remove_flag(ui.page_dots[i], LV_OBJ_FLAG_HIDDEN);
         } else {
@@ -411,7 +411,7 @@ void show_page(moto_ui_page_t page, bool reveal_on_same_page = false) {
     if(page < MOTO_UI_PAGE_NAVIGATION || page >= MOTO_UI_PAGE_COUNT) return;
     if((page == MOTO_UI_PAGE_MUSIC && !ui.music_page_enabled) ||
        (page == MOTO_UI_PAGE_SHORTCUTS && !ui.shortcuts_page_enabled) ||
-       (page == MOTO_UI_PAGE_PRESETS && !ui.presets_page_enabled)) {
+       (page == MOTO_UI_PAGE_PRESETS && !kPresetsPageEnabled)) {
         page = MOTO_UI_PAGE_NAVIGATION;
     }
     const bool changed = page != ui.page;
@@ -443,7 +443,7 @@ void gesture_event(lv_event_t *) {
     }
     while((next == MOTO_UI_PAGE_MUSIC && !ui.music_page_enabled) ||
           (next == MOTO_UI_PAGE_SHORTCUTS && !ui.shortcuts_page_enabled) ||
-          (next == MOTO_UI_PAGE_PRESETS && !ui.presets_page_enabled)) {
+          (next == MOTO_UI_PAGE_PRESETS && !kPresetsPageEnabled)) {
         next = direction == LV_DIR_LEFT ? (next + 1) % MOTO_UI_PAGE_COUNT
             : (next + MOTO_UI_PAGE_COUNT - 1) % MOTO_UI_PAGE_COUNT;
     }
