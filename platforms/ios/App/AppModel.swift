@@ -29,6 +29,7 @@ final class AppModel: ObservableObject {
     private var liveRouteProvider: AmapGatewayRouteProvider
     private var placeProvider: AmapGatewayPlaceProvider
     private let mediaController = AppleMusicRemoteController()
+    let shortcutRunner = ShortcutRunner.shared
     let surroundingMap: SurroundingMapStore
     @Published private(set) var mapGatewayBaseURL: URL
     @Published private(set) var isUpdatingGateway = false
@@ -64,6 +65,8 @@ final class AppModel: ObservableObject {
                     : .unsupported
             case 16 ... 19:
                 return self.mediaController.handleDeviceCommand(kind: command.kind)
+            case 20:
+                return self.shortcutRunner.handle(slot: command.x)
             default:
                 return .unsupported
             }

@@ -560,6 +560,28 @@ void test_validation_failures() {
   zero_command.command_id = 0;
   CHECK(encode_message(Message{zero_command}).error == Error::OutOfRange);
 
+  DeviceCommand shortcut = command_fixture();
+  shortcut.kind = DeviceCommandKind::RunShortcut;
+  shortcut.page = DisplayPage::Shortcuts;
+  shortcut.x = 3;
+  shortcut.y = kUnknownTouchCoordinate;
+  const auto shortcut_bytes = encode_message(Message{shortcut});
+  CHECK(shortcut_bytes.ok());
+  if (shortcut_bytes.ok()) {
+    const auto decoded_shortcut = decode_message(MessageType::DeviceCommand,
+                                                  ByteView(shortcut_bytes.value));
+    CHECK(decoded_shortcut.ok());
+    if (decoded_shortcut.ok())
+      CHECK(std::get<DeviceCommand>(decoded_shortcut.value) == shortcut);
+  }
+  shortcut.x = 0;
+  CHECK(encode_message(Message{shortcut}).error == Error::OutOfRange);
+  shortcut.x = 4;
+  CHECK(encode_message(Message{shortcut}).error == Error::OutOfRange);
+  shortcut.x = 1;
+  shortcut.page = DisplayPage::Music;
+  CHECK(encode_message(Message{shortcut}).error == Error::OutOfRange);
+
   CHECK(decode_message(static_cast<MessageType>(0xFF),
                        ByteView(trailing)).error ==
         Error::UnknownMessageType);
@@ -605,6 +627,16 @@ int main(int argc, char** argv) {
   test_supersession_duplicate_message_and_wrap();
   test_validation_failures();
   test_link_watchdog();
+  for (const int16_t offset : {int16_t(-720), int16_t(0), int16_t(480), int16_t(840)}) {
+    const TimeSync clock{1794301200U, offset};
+    const auto encoded = encode_message(Message{clock});
+    CHECK(encoded.ok());
+    const auto decoded = decode_message(MessageType::TimeSync, ByteView(encoded.value));
+    CHECK(decoded.ok());
+    if (decoded.ok()) CHECK(std::get<TimeSync>(decoded.value) == clock);
+  }
+  CHECK(encode_message(Message{TimeSync{0, 0}}).error == Error::OutOfRange);
+  CHECK(encode_message(Message{TimeSync{1, 841}}).error == Error::OutOfRange);
 
   if (failures != 0) {
     std::cerr << failures << " BLE protocol checks failed\n";

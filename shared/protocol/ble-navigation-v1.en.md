@@ -210,7 +210,8 @@ u16 heartbeat_interval_ms  >=250
 ```
 
 Capability bits: bit0 navigation, bit1 route geometry, bit2 traffic, bit3 media state, bit4
-touch commands, bit5 music commands, bit6 command ACK, bit7 map scene.
+touch commands, bit5 music commands, bit6 command ACK, bit7 map scene, bit8 shortcuts.
+The display shows the shortcuts page only when the phone is Ready and advertises bit8.
 
 ### 6.2 Heartbeat (`0x02`, fixed 11 bytes)
 
@@ -243,7 +244,7 @@ u8  revision
 u8  state                 0 Idle, 1 Acquiring, 2 Planning,
                           3 Navigating, 4 Rerouting, 5 Arrived
 u8  network               0 Offline, 1 Connecting, 2 Online
-u8  display_page          0 Navigation, 1 Speed, 2 Compass, 3 Music
+u8  display_page          0 Navigation, 1 Speed, 2 Compass, 3 Music, 4 Shortcuts
 u8  maneuver              0..12, in the same order as the shared ManeuverType
 u8  traffic               0 Unknown, 1 FreeFlow, 2 Slow,
                           3 Congested, 4 Severe
@@ -435,7 +436,10 @@ u32 event_time_ms           low 32 bits of the device monotonic clock
 ```
 
 kind: 0 PageSelected, 1 Tap, 2 LongPress, 3 SwipeLeft, 4 SwipeRight, 5 SwipeUp, 6 SwipeDown,
-16 MusicPrevious, 17 MusicTogglePlayback, 18 MusicNext, 19 MusicLike. The music commands follow
+16 MusicPrevious, 17 MusicTogglePlayback, 18 MusicNext, 19 MusicLike, 20 RunShortcut.
+RunShortcut uses page=4, x=1–3 for the phone-configured slot and y=0xFFFF. Send it only
+when the phone advertises bit8. ACK Ok means the request was accepted, not that the shortcut ran.
+The music commands follow
 the four actions in `shared/nav_ui`. Touch coordinates are screen pixels; the swipe direction is
 already normalised, so the phone must not infer the direction from the coordinates again.
 
@@ -530,3 +534,8 @@ cmake --build build/native --target ble_protocol_tests
 The tests cover round-trip for all messages, the fixed UUIDs/properties, CRC error detection,
 20-byte fragmentation, reassembly, duplicate and conflicting fragments, gaps, timeouts,
 replacement by a newer START, sequence wrap-around, input bounds and the golden bytes.
+
+
+### TimeSync (0x04)
+
+Payload: revision (u8, 1), Unix seconds (u32 LE, nonzero), UTC offset minutes (i16 LE, -720..840). The phone appends a separate TimeSync after a complete outbound message, preserving fragment boundaries. Terminals display local HH:MM; before the first sync they display --:--. No acknowledgement is requested. Older terminal firmware may ignore this optional message.

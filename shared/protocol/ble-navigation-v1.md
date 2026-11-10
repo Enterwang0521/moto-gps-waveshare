@@ -182,7 +182,8 @@ u16 heartbeat_interval_ms  >=250
 ```
 
 能力位：bit0 navigation、bit1 route geometry、bit2 traffic、bit3 media state、
-bit4 touch commands、bit5 music commands、bit6 command ACK、bit7 map scene。
+bit4 touch commands、bit5 music commands、bit6 command ACK、bit7 map scene、bit8 shortcuts。
+设备仅在手机 Ready 且声明 bit8 时显示快捷指令页。
 
 ### 6.2 Heartbeat (`0x02`, 固定 11 字节)
 
@@ -214,7 +215,7 @@ u8  revision
 u8  state                 0 Idle, 1 Acquiring, 2 Planning,
                           3 Navigating, 4 Rerouting, 5 Arrived
 u8  network               0 Offline, 1 Connecting, 2 Online
-u8  display_page          0 Navigation, 1 Speed, 2 Compass, 3 Music
+u8  display_page          0 Navigation, 1 Speed, 2 Compass, 3 Music, 4 Shortcuts
 u8  maneuver              0..12，与 shared ManeuverType 顺序一致
 u8  traffic               0 Unknown, 1 FreeFlow, 2 Slow,
                           3 Congested, 4 Severe
@@ -393,7 +394,9 @@ u32 event_time_ms           设备单调时钟低 32 位
 ```
 
 kind：0 PageSelected、1 Tap、2 LongPress、3 SwipeLeft、4 SwipeRight、5 SwipeUp、
-6 SwipeDown、16 MusicPrevious、17 MusicTogglePlayback、18 MusicNext、19 MusicLike。
+6 SwipeDown、16 MusicPrevious、17 MusicTogglePlayback、18 MusicNext、19 MusicLike、20 RunShortcut。
+RunShortcut 使用 page=4、x=1～3 表示手机配置的位置，y=0xFFFF；仅在手机声明 bit8 时发送。
+ACK Ok 表示手机接受请求，不代表快捷指令已运行成功。
 音乐命令沿用 `shared/nav_ui` 的四个动作。触摸坐标是屏幕像素；滑动方向已经归一化，
 手机不应再次用坐标推断方向。
 
@@ -480,3 +483,8 @@ cmake --build build/native --target ble_protocol_tests
 
 测试覆盖全部消息 round-trip、固定 UUID/属性、CRC 检错、20-byte 分片、重组、重复
 与冲突分片、缺口、超时、较新 START 取代、序号回绕、输入边界和黄金字节。
+
+
+### TimeSync (0x04)
+
+Payload: revision (u8, 1), Unix seconds (u32 LE, nonzero), UTC offset minutes (i16 LE, -720..840). The phone appends a separate TimeSync after a complete outbound message, preserving fragment boundaries. Terminals display local HH:MM; before the first sync they display --:--. No acknowledgement is requested. Older terminal firmware may ignore this optional message.

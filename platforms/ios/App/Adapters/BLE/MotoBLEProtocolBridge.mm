@@ -60,6 +60,7 @@ moto::ble::DisplayPage DisplayPageFromName(NSString *name) {
   if ([name isEqualToString:@"speed"]) return moto::ble::DisplayPage::Speed;
   if ([name isEqualToString:@"compass"]) return moto::ble::DisplayPage::Compass;
   if ([name isEqualToString:@"music"]) return moto::ble::DisplayPage::Music;
+  if ([name isEqualToString:@"shortcuts"]) return moto::ble::DisplayPage::Shortcuts;
   return moto::ble::DisplayPage::Navigation;
 }
 
@@ -245,6 +246,7 @@ moto::ble::ConnectionStatus PhoneConnectionStatus(
                         moto::ble::CapabilityMediaState |
                         moto::ble::CapabilityTouchCommands |
                         moto::ble::CapabilityMusicCommands |
+                        moto::ble::CapabilityShortcuts |
                         moto::ble::CapabilityCommandAck |
                         moto::ble::CapabilityMapScene;
   status.session_id = session_id;
@@ -439,6 +441,14 @@ moto::ble::ConnectionStatus PhoneConnectionStatus(
   const auto status = PhoneConnectionStatus(
       storage, moto::ble::ConnectionState::Ready, sessionID);
   return EncodeMessage(storage, moto::ble::Message{status}, 0, error);
+}
+
+- (NSArray<NSData *> *)encodeCurrentTimeWithError:(NSError **)error {
+  NSDate *now = [NSDate date];
+  moto::ble::TimeSync time;
+  time.unix_seconds = static_cast<uint32_t>([now timeIntervalSince1970]);
+  time.utc_offset_minutes = static_cast<int16_t>([[NSTimeZone localTimeZone] secondsFromGMTForDate:now] / 60);
+  return EncodeMessage(static_cast<CodecStorage *>(_storage), moto::ble::Message{time}, 0, error);
 }
 
 - (NSArray<NSData *> *)encodeHeartbeatWithSessionID:(uint32_t)sessionID

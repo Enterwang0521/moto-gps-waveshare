@@ -66,6 +66,7 @@ NSString *DisplayPageName(moto::nav::DisplayPage page) {
     case moto::nav::DisplayPage::Speed: return @"speed";
     case moto::nav::DisplayPage::Compass: return @"compass";
     case moto::nav::DisplayPage::Music: return @"music";
+    case moto::nav::DisplayPage::Shortcuts: return @"shortcuts";
   }
 }
 
@@ -312,6 +313,7 @@ struct BridgeStorage {
   if ([pageName isEqualToString:@"speed"]) page = moto::nav::DisplayPage::Speed;
   if ([pageName isEqualToString:@"compass"]) page = moto::nav::DisplayPage::Compass;
   if ([pageName isEqualToString:@"music"]) page = moto::nav::DisplayPage::Music;
+  if ([pageName isEqualToString:@"shortcuts"]) page = moto::nav::DisplayPage::Shortcuts;
   return [self handle:moto::nav::DisplayPageSelected{page}];
 }
 

@@ -238,7 +238,7 @@ bool valid_coordinate_system(CoordinateSystem system) {
 }
 
 bool valid_display_page(DisplayPage page) {
-  return enum_at_most(page, DisplayPage::Music);
+  return enum_at_most(page, DisplayPage::Shortcuts);
 }
 
 bool valid_map_road_class(MapRoadClass road_class) {
@@ -262,6 +262,7 @@ bool valid_command_kind(DeviceCommandKind kind) {
     case DeviceCommandKind::MusicTogglePlayback:
     case DeviceCommandKind::MusicNext:
     case DeviceCommandKind::MusicLike:
+    case DeviceCommandKind::RunShortcut:
       return true;
   }
   return false;
@@ -292,6 +293,11 @@ Error validate(const Heartbeat& value) {
   return value.session_id == 0 || value.status_flags != 0
              ? Error::OutOfRange
              : Error::None;
+}
+
+Error validate(const TimeSync& value) {
+  return value.unix_seconds == 0 || value.utc_offset_minutes < -720 ||
+                 value.utc_offset_minutes > 840 ? Error::OutOfRange : Error::None;
 }
 
 Error validate(const Ack& value) {
@@ -478,6 +484,11 @@ Error validate(const DeviceCommand& value) {
   if (!valid_command_kind(value.kind) || !valid_display_page(value.page)) {
     return Error::InvalidEnum;
   }
+  if (value.kind == DeviceCommandKind::RunShortcut &&
+      (value.page != DisplayPage::Shortcuts || value.x < 1 || value.x > 3 ||
+       value.y != kUnknownTouchCoordinate)) {
+    return Error::OutOfRange;
+  }
   return value.command_id == 0 ? Error::OutOfRange : Error::None;
 }
 
@@ -503,6 +514,9 @@ BytesResult encode_payload(const T& value) {
     writer.u32(value.session_id);
     writer.u32(value.monotonic_ms);
     writer.u16(value.status_flags);
+  } else if constexpr (std::is_same_v<T, TimeSync>) {
+    writer.u32(value.unix_seconds);
+    writer.u16(static_cast<std::uint16_t>(value.utc_offset_minutes));
   } else if constexpr (std::is_same_v<T, Ack>) {
     writer.u16(value.acknowledged_sequence);
     writer.u8(static_cast<std::uint8_t>(value.status));
@@ -662,6 +676,17 @@ MessageResult decode_heartbeat(ByteView payload) {
     value.session_id = reader.u32();
     value.monotonic_ms = reader.u32();
     value.status_flags = reader.u16();
+    reader.require_end();
+  }
+  return decoded_result(std::move(value), reader);
+}
+
+MessageResult decode_time_sync(ByteView payload) {
+  Reader reader(payload);
+  TimeSync value;
+  if (begin_payload(reader)) {
+    value.unix_seconds = reader.u32();
+    value.utc_offset_minutes = static_cast<std::int16_t>(reader.u16());
     reader.require_end();
   }
   return decoded_result(std::move(value), reader);
@@ -1368,6 +1393,10 @@ bool Heartbeat::operator==(const Heartbeat& rhs) const noexcept {
          std::tie(rhs.session_id, rhs.monotonic_ms, rhs.status_flags);
 }
 
+bool TimeSync::operator==(const TimeSync& rhs) const noexcept {
+  return unix_seconds == rhs.unix_seconds && utc_offset_minutes == rhs.utc_offset_minutes;
+}
+
 bool Ack::operator==(const Ack& rhs) const noexcept {
   return std::tie(acknowledged_sequence, status, command_id) ==
          std::tie(rhs.acknowledged_sequence, rhs.status, rhs.command_id);
@@ -1462,6 +1491,8 @@ MessageType message_type(const Message& message) noexcept {
           return MessageType::ConnectionStatus;
         } else if constexpr (std::is_same_v<T, Heartbeat>) {
           return MessageType::Heartbeat;
+        } else if constexpr (std::is_same_v<T, TimeSync>) {
+          return MessageType::TimeSync;
         } else if constexpr (std::is_same_v<T, Ack>) {
           return MessageType::Ack;
         } else if constexpr (std::is_same_v<T, NavigationSnapshot>) {
@@ -1491,6 +1522,7 @@ MessageResult decode_message(MessageType type, ByteView payload) {
     case MessageType::ConnectionStatus:
       return decode_connection_status(payload);
     case MessageType::Heartbeat: return decode_heartbeat(payload);
+    case MessageType::TimeSync: return decode_time_sync(payload);
     case MessageType::Ack: return decode_ack(payload);
     case MessageType::NavigationSnapshot:
       return decode_navigation_snapshot(payload);

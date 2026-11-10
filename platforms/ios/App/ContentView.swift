@@ -11,11 +11,13 @@ struct ContentView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
     @FocusState private var searchFocused: Bool
     @State private var showsDeviceDetails = false
     @State private var showsMapDownloads = false
     @State private var showsDataUse = false
     @State private var showsGatewaySettings = false
+    @State private var showsShortcutSettings = false
 
     var body: some View {
         NavigationStack(path: navigationPath) {
@@ -27,7 +29,7 @@ struct ContentView: View {
                     }
                 }
         }
-        .tint(.blue)
+        .tint(.black)
         .onChange(of: model.destinationQuery) { _, _ in model.destinationQueryDidChange() }
         .onChange(of: model.selectedPlace) { _, place in
             if place != nil { searchFocused = false }
@@ -35,6 +37,13 @@ struct ContentView: View {
         .onChange(of: model.isNavigationActive) { _, active in
             if active { searchFocused = false }
         }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { model.shortcutRunner.openPendingIfActive() }
+        }
+        .onReceive(model.shortcutRunner.$pendingName) { _ in
+            model.shortcutRunner.openPendingIfActive()
+        }
+        .onAppear { model.shortcutRunner.openPendingIfActive() }
         .sheet(isPresented: $showsDeviceDetails) { deviceDetails }
         .sheet(isPresented: $showsMapDownloads) {
             MapDownloadsView(
@@ -46,6 +55,7 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showsDataUse) { DataUseView() }
         .sheet(isPresented: $showsGatewaySettings) { GatewaySettingsView(model: model) }
+        .sheet(isPresented: $showsShortcutSettings) { ShortcutSettingsView() }
     }
 
     // Derive the stack from the session instead of synchronizing two mutable
@@ -71,6 +81,22 @@ struct ContentView: View {
 
     private var homeScreen: some View {
         List {
+            Section {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("RIDER NAV").font(.system(size: 13, weight: .black)).tracking(1.5)
+                        Spacer()
+                        Text("HOME / 01").font(.system(size: 11, weight: .bold)).tracking(1)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(Color(red: 1, green: 0.8, blue: 0), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    Text("今天想去哪里？").font(.system(size: 28, weight: .black))
+                    Text("将路线留在视线里，将注意力留给路况。")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 10)
+                .accessibilityElement(children: .combine)
+            }
             if !model.isGatewayConfigured {
                 Section {
                     Button { showsGatewaySettings = true } label: {
@@ -110,6 +136,10 @@ struct ContentView: View {
                     Text("连接圆屏后，导航指引会自动同步。")
                 }
                 Section {
+                    Button { showsShortcutSettings = true } label: {
+                        Label("圆屏快捷指令", systemImage: "square.stack.3d.up")
+                            .foregroundStyle(Color.primary)
+                    }
                     Button { showsGatewaySettings = true } label: {
                         Label("网关设置", systemImage: "network")
                             .foregroundStyle(Color.primary)
@@ -124,6 +154,8 @@ struct ContentView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.white)
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle("出发")
         .toolbar {
@@ -380,6 +412,8 @@ struct ContentView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.white)
         .navigationTitle("路线")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -516,6 +550,8 @@ struct ContentView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.white)
         .navigationTitle(model.isDemoActive ? "演示导航" : "导航中")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -556,7 +592,7 @@ struct ContentView: View {
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.roundedRectangle(radius: 16))
             .controlSize(.large)
-            .tint(model.isNavigationActive ? .red : .blue)
+            .tint(model.isNavigationActive ? Color(red: 0.71, green: 0.34, blue: 0) : .black)
             .disabled(!model.isNavigationActive && (model.selectedPlace == nil || model.isPlanningRoutePreview))
             .accessibilityIdentifier("primary-navigation-action")
         }

@@ -760,8 +760,10 @@ final class ESP32BLECentral: NSObject {
     @discardableResult
     private func send(_ frames: [Data]) throws -> Bool {
         guard phoneToDeviceCharacteristic != nil else { return false }
+        guard let codec else { return false }
+        let timeFrames = try codec.encodeCurrentTime()
         var resetQueuedFrames = false
-        if outboundFrames.count + frames.count > 128 {
+        if outboundFrames.count + frames.count + timeFrames.count > 128 {
             // Preserve the newest complete snapshot rather than growing without
             // bound while iOS waits for CoreBluetooth backpressure to clear.
             outboundFrames.removeAll(keepingCapacity: true)
@@ -774,6 +776,7 @@ final class ESP32BLECentral: NSObject {
             resetQueuedFrames = true
         }
         outboundFrames.append(contentsOf: frames)
+        outboundFrames.append(contentsOf: timeFrames)
         flushWrites()
         return resetQueuedFrames
     }

@@ -143,6 +143,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSArray<NSData *> *)encodePhoneReadyWithSessionID:(uint32_t)sessionID
                                                         error:(NSError **)error;
 
+- (nullable NSArray<NSData *> *)encodeCurrentTimeWithError:(NSError **)error;
+
 - (nullable NSArray<NSData *> *)encodeHeartbeatWithSessionID:(uint32_t)sessionID
                                                   monotonicMs:(uint32_t)monotonicMs
                                                         error:(NSError **)error;
