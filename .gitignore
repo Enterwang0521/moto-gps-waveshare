@@ -17,6 +17,9 @@ __pycache__/
 platforms/esp32/managed_components/
 platforms/esp32/sdkconfig
 platforms/esp32/sdkconfig.old
+platforms/smartring/managed_components/
+platforms/smartring/sdkconfig
+platforms/smartring/sdkconfig.old
 platforms/ios/.build/
 platforms/ios/.swiftpm/
 platforms/ios/DerivedData/

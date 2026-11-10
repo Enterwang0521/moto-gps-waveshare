@@ -7,8 +7,12 @@
 #define MOTO_UI_ROAD_POLYLINE_CAPACITY 24
 #define MOTO_UI_BUILDING_POINT_CAPACITY 128
 #define MOTO_UI_BUILDING_FOOTPRINT_CAPACITY 16
+#ifndef MOTO_UI_CANVAS_WIDTH
 #define MOTO_UI_CANVAS_WIDTH 466
+#endif
+#ifndef MOTO_UI_CANVAS_HEIGHT
 #define MOTO_UI_CANVAS_HEIGHT 466
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,6 +62,8 @@ typedef enum {
     MOTO_UI_PAGE_SPEED,
     MOTO_UI_PAGE_COMPASS,
     MOTO_UI_PAGE_MUSIC,
+    MOTO_UI_PAGE_SHORTCUTS,
+    MOTO_UI_PAGE_PRESETS,
     MOTO_UI_PAGE_COUNT,
 } moto_ui_page_t;
 
@@ -69,7 +75,7 @@ typedef enum {
 } moto_music_command_t;
 
 typedef struct {
-    /* Native pixel coordinates in the single 466 x 466 shared canvas. */
+    /* Native pixel coordinates in the configured square UI canvas. */
     int16_t x;
     int16_t y;
 } moto_ui_point_t;
@@ -98,10 +104,18 @@ typedef struct {
     uint8_t playing;
     uint8_t like_available;
     uint8_t liked;
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    uint16_t position_s;
+    uint16_t duration_s;
+#endif
 } moto_music_state_t;
 
 typedef void (*moto_music_command_callback_t)(moto_music_command_t command,
                                                void *context);
+typedef void (*moto_shortcut_callback_t)(uint8_t slot, void *context);
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+typedef void (*moto_volume_change_callback_t)(int8_t direction, void *context);
+#endif
 typedef void (*moto_page_change_callback_t)(moto_ui_page_t page,
                                              void *context);
 typedef void (*moto_demo_change_callback_t)(uint8_t enabled,
@@ -145,6 +159,11 @@ typedef struct {
 } moto_ui_state_t;
 
 void moto_nav_ui_create(void);
+void moto_nav_ui_sync_clock(uint32_t local_seconds);
+typedef void (*moto_preset_callback_t)(uint8_t slot, void *context);
+void moto_nav_ui_set_preset_callback(moto_preset_callback_t callback, void *context);
+void moto_nav_ui_set_presets(const char *const names[4], const uint32_t tokens[4], const char *status);
+
 /** Draw the monochrome power-on wordmark before the full UI is created. */
 void moto_nav_ui_show_boot_screen(void);
 /** Draw the final monochrome frame before the PMIC removes power. */
@@ -163,9 +182,17 @@ void moto_nav_ui_set_page_change_callback(
     void *context);
 void moto_nav_ui_set_music_state(const moto_music_state_t *state);
 void moto_nav_ui_set_music_page_enabled(uint8_t enabled);
+void moto_nav_ui_set_shortcuts_page_enabled(uint8_t enabled);
+void moto_nav_ui_set_shortcut_callback(moto_shortcut_callback_t callback,
+                                       void *context);
 void moto_nav_ui_set_music_command_callback(
     moto_music_command_callback_t callback,
     void *context);
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+void moto_nav_ui_set_volume_change_callback(
+    moto_volume_change_callback_t callback, void *context);
+void moto_nav_ui_set_music_volume(uint8_t available, int16_t percent);
+#endif
 /** Mark the production navigation renderer as being fed by demo snapshots. */
 void moto_nav_ui_set_demo_active(uint8_t enabled);
 /** Long-pressing the navigation page toggles this test-build demo source. */

@@ -1,0 +1,7 @@
+dependencies:
+  viewesmart/smartring_plus: "1.1.2"
+  waveshare/qmi8658: "2.0.0"
+  lvgl/lvgl:
+    version: "9.5.0"
+    public: true
+    override_path: "../../../third_party/lvgl"

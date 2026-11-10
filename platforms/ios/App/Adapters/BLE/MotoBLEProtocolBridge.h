@@ -143,6 +143,11 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSArray<NSData *> *)encodePhoneReadyWithSessionID:(uint32_t)sessionID
                                                         error:(NSError **)error;
 
+- (nullable NSArray<NSData *> *)encodePresetOperation:(uint8_t)operation
+    slot:(uint8_t)slot token:(uint32_t)token size:(uint32_t)size crc:(uint32_t)crc
+    offset:(uint32_t)offset name:(NSString *)name data:(NSData *)data error:(NSError **)error
+    NS_SWIFT_NAME(encodePreset(operation:slot:token:size:crc:offset:name:data:));
+
 - (nullable NSArray<NSData *> *)encodeCurrentTimeWithError:(NSError **)error;
 
 - (nullable NSArray<NSData *> *)encodeHeartbeatWithSessionID:(uint32_t)sessionID

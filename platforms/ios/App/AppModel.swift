@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import UIKit
 import MotoNavigationCore
 
 @MainActor
@@ -23,6 +24,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var isPlanningRoutePreview = false
     @Published private(set) var routePreviewFailure: String?
 
+    private let presetLibrary = PresetRouteLibrary()
+    @Published private(set) var savedPresetRoutes: [SavedPresetRoute] = []
+    @Published private(set) var presetMessage: String?
+    @Published private(set) var presetTransferProgress: Double?
+    @Published private(set) var presetStandby = false
     private let bluetooth = ESP32BLECentral()
     private let liveLocation = CoreLocationNavigationSource()
     private let searchLocation = SearchLocationBiasSource()
@@ -47,6 +53,7 @@ final class AppModel: ObservableObject {
         mapGatewayBaseURL = gatewayBaseURL
         surroundingMap = SurroundingMapStore(baseURL: gatewayBaseURL)
         recentPlaces = Self.loadRecentPlaces()
+        savedPresetRoutes = presetLibrary.current
 
         surroundingMap.onScene = { [weak self] scene in
             self?.bluetooth.sendMapScene(scene)
@@ -65,6 +72,9 @@ final class AppModel: ObservableObject {
                     : .unsupported
             case 16 ... 19:
                 return self.mediaController.handleDeviceCommand(kind: command.kind)
+            case 21:
+                let token = UInt32(command.x) | (UInt32(command.y) << 16)
+                return self.startPreset(token: token)
             case 20:
                 return self.shortcutRunner.handle(slot: command.x)
             default:
@@ -349,6 +359,73 @@ final class AppModel: ObservableObject {
         if !started {
             self.runtime = nil
         }
+    }
+
+    func saveCurrentPreset(slot: Int, name: String) {
+        do {
+            guard let selectedPlace, let routePreviewOrigin, let selectedRoutePreview else {
+                throw PresetRouteError.message("请先规划并选择一条路线")
+            }
+            _ = try presetLibrary.save(slot: slot, name: name, origin: routePreviewOrigin,
+                                       destination: selectedPlace, route: selectedRoutePreview.route)
+            savedPresetRoutes = presetLibrary.current
+            presetMessage = "已保存到手机，请点击传到 TF 卡"
+        } catch { presetMessage = error.localizedDescription }
+    }
+    func isPresetTransferred(_ route: SavedPresetRoute) -> Bool { presetLibrary.isTransferred(route) }
+    func transferPreset(_ route: SavedPresetRoute) async {
+        guard presetTransferProgress == nil else { return }
+        presetTransferProgress = 0
+        defer { presetTransferProgress = nil }
+        do {
+            let data = try JSONEncoder().encode(route)
+            try await bluetooth.uploadPreset(slot: route.slot, token: route.token, name: route.name,
+                data: data) { self.presetTransferProgress = $0 }
+            try presetLibrary.transferred(route)
+            presetMessage = "\(route.name) 已写入 TF 卡并通过校验"
+        } catch { presetMessage = error.localizedDescription }
+    }
+    func setPresetStandby(_ enabled: Bool) {
+        guard enabled != presetStandby else { return }
+        presetStandby = enabled
+        liveLocation.keepsPresetStandby = enabled
+        if runtime == nil {
+            if enabled {
+                do {
+                    try liveLocation.start(onFix: { _ in }, onFailure: { [weak self] text in self?.presetMessage = text })
+                    presetMessage = "后台待命已开启，蓝牙连接时可从圆屏选择路线；会增加定位耗电"
+                } catch {
+                    presetStandby = false; liveLocation.keepsPresetStandby = false
+                    presetMessage = error.localizedDescription
+                }
+            } else { liveLocation.stop() }
+        }
+    }
+    @discardableResult
+    func startPreset(token: UInt32) -> BLECommandDisposition {
+        guard let saved = presetLibrary.find(token: token), !isUpdatingGateway else {
+            presetMessage = "手机中没有对应路线，请重新传输 TF 路线"
+            return .invalidState
+        }
+        guard UIApplication.shared.applicationState == .active || presetStandby || liveLocation.backgroundAuthorized else {
+            presetMessage = "请在前台开启后台待命，或允许始终定位"
+            return .invalidState
+        }
+        routePreviewTask?.cancel(); routePreviewTask = nil
+        runtime?.stop(); surroundingMap.reset()
+        selectedPlace = saved.destination; routePreviewOrigin = saved.origin
+        routePreviewCandidates = [RoutePreviewCandidate(ordinal: 0, route: saved.route)]
+        selectedRoutePreviewID = routePreviewCandidates[0].id
+        let next = SharedNavigationRuntime(locationSource: liveLocation,
+            routeProvider: PreviewSelectedRouteProvider(selectedRoute: saved.route,
+                selectedRouteOrigin: saved.origin, liveProvider: liveRouteProvider,
+                maximumOriginDriftM: .infinity))
+        bind(next); runtime = next; isDemoActive = false; navigationFailure = nil
+        isNavigationActive = next.start(destination: saved.destination.location,
+            destinationPOIID: saved.destination.id.isEmpty ? nil : saved.destination.id)
+        if !isNavigationActive { runtime = nil; return .failed }
+        presetMessage = "已调取：\(saved.name)"
+        return .accepted
     }
 
     func startDemoNavigation() {

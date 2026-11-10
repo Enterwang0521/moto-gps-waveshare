@@ -488,3 +488,14 @@ cmake --build build/native --target ble_protocol_tests
 ### TimeSync (0x04)
 
 Payload: revision (u8, 1), Unix seconds (u32 LE, nonzero), UTC offset minutes (i16 LE, -720..840). The phone appends a separate TimeSync after a complete outbound message, preserving fragment boundaries. Terminals display local HH:MM; before the first sync they display --:--. No acknowledgement is requested. Older terminal firmware may ignore this optional message.
+
+
+### TF 预设路线扩展（开发版）
+
+能力位 `1<<9`，消息类型 `0x05 PresetRoute`，页面 `5 Presets`，设备命令 `21 SelectPresetRoute`。
+
+PresetRoute payload 按顺序：revision u8=1，operation u8（1 Begin/2 Data/3 Commit/4 Delete），slot u8=1..4，token u32，total_size u32（1..262144），crc32 u32，offset u32，name（u8 字节长度 + 0..63 UTF-8 字节），data（u16 长度 + 0..512 字节）。多字节整数小端；CRC32 为 ISO-HDLC（123456789 -> CBF43926）。Begin 的 offset=0、数据空且名称非空；Data 只能追加到当前偏移；Commit 必须与 Begin 的 token/长度/CRC 一致，收到完整文件并校验后才返回成功。每个消息请求 ACK，手机 stop-and-wait。旧固件不支持时手机拒绝上传。TF 错误回 Failed，旧版本仍有效；UI 仅在 Commit ACK 后标记已传输。
+
+SelectPresetRoute 的 page=5，x=token 低16位，y=token 高16位，command_id/事件时间保留原语义。手机按完整 token 查找本地镜像，不按槽位盲选；没有匹配数据返回 InvalidState。ACK 成功表示手机接受请求，不等于已获得 GPS fix。圆屏 10 秒未收到确认显示超时。后台开始导航需要用户提前授权并启用待命；强制退出不保证唤醒。
+
+卡内文件是带头部的 App 路线 JSON，不是地图瓦片。每槽位 A/B 两份，头部保存 magic、递增代数、token、长度、数据 CRC、63 字节名称及头部 CRC，损坏新副本启动时回退旧副本。临时文件不参与枚举。文件布局当前为固件内部开发格式，用户不应手动编辑。

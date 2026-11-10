@@ -627,6 +627,16 @@ int main(int argc, char** argv) {
   test_supersession_duplicate_message_and_wrap();
   test_validation_failures();
   test_link_watchdog();
+  PresetRoute preset;
+  preset.operation=2;preset.slot=4;preset.token=123;preset.total_size=512;
+  preset.name="Weekends";preset.data=Bytes(512,0xA5);
+  const auto preset_bytes=encode_message(Message{preset});CHECK(preset_bytes.ok());
+  const auto preset_decoded=decode_message(MessageType::PresetRoute,ByteView(preset_bytes.value));
+  CHECK(preset_decoded.ok());if(preset_decoded.ok())CHECK(std::get<PresetRoute>(preset_decoded.value)==preset);
+  preset.slot=5;CHECK(!encode_message(Message{preset}).ok());preset.slot=1;
+  preset.offset=1;CHECK(!encode_message(Message{preset}).ok());preset.offset=0;
+  preset.data.push_back(1);CHECK(!encode_message(Message{preset}).ok());
+
   for (const int16_t offset : {int16_t(-720), int16_t(0), int16_t(480), int16_t(840)}) {
     const TimeSync clock{1794301200U, offset};
     const auto encoded = encode_message(Message{clock});

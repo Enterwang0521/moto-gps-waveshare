@@ -205,6 +205,8 @@ final class ESP32BLECentral: NSObject {
     /// RX queue. Pace application frames instead of bursting every fragment in
     /// one run-loop turn.
     private static let writeWithoutResponsePacingMs: UInt64 = 15
+    private var presetTransferActive = false
+    private var presetAck: (sequence: UInt16, status: UInt8?)?
     private static let mapSceneCapability: UInt32 = 1 << 7
 
     private struct RouteGeometrySignature: Equatable {
@@ -897,6 +899,43 @@ final class ESP32BLECentral: NSObject {
         }
     }
 
+    func uploadPreset(slot: Int, token: UInt32, name: String, data: Data,
+                      progress: (Double) -> Void) async throws {
+        guard !presetTransferActive, protocolReady, peerCapabilities & (1 << 9) != 0,
+              !data.isEmpty, data.count <= 262_144 else {
+            throw PresetRouteError.message("请连接支持 TF 路线的新固件；路线最大 256 KiB，一次传输一条")
+        }
+        presetTransferActive = true
+        defer { presetTransferActive = false; presetAck = nil }
+        let crc = PresetRouteLibrary.crc32(data)
+        func packet(_ operation: UInt8, _ offset: Int, _ bytes: Data) async throws {
+            guard protocolReady, let codec else { throw PresetRouteError.message("蓝牙已断开，请重新传输") }
+            let frames = try codec.encodePreset(operation: operation, slot: UInt8(slot), token: token,
+                size: UInt32(data.count), crc: crc, offset: UInt32(offset), name: name, data: bytes)
+            presetAck = (codec.lastEncodedSequence, nil)
+            try send(frames)
+            for _ in 0..<100 {
+                try await Task.sleep(for: .milliseconds(100))
+                guard protocolReady else { throw PresetRouteError.message("蓝牙已断开，请重新传输") }
+                if let status = presetAck?.status {
+                    guard status == 0 || status == 4 else {
+                        throw PresetRouteError.message("设备拒绝写入，请检查 TF 卡、剩余空间和固件")
+                    }
+                    return
+                }
+            }
+            throw PresetRouteError.message("设备确认超时，旧路线仍保留，请重试")
+        }
+        try await packet(1, 0, Data())
+        for offset in stride(from: 0, to: data.count, by: 512) {
+            try Task.checkCancellation()
+            let end = min(offset + 512, data.count)
+            try await packet(2, offset, data.subdata(in: offset..<end))
+            progress(Double(end) / Double(data.count))
+        }
+        try await packet(3, data.count, Data())
+    }
+
     private static func routeGeometrySignature(
         for state: MotoNavCoreSnapshot
     ) -> RouteGeometrySignature? {
@@ -1416,6 +1455,8 @@ extension ESP32BLECentral: @preconcurrency CBPeripheralDelegate {
                 return
             }
             if let ack = inbound.acknowledgement {
+                if presetAck?.sequence == ack.acknowledgedSequence { presetAck?.status = ack.status }
+
                 if mapSceneDelivery.acknowledge(sequence: ack.acknowledgedSequence,
                                                 status: ack.status) {
                     trace("map acknowledged sequence=\(ack.acknowledgedSequence) status=\(ack.status)")

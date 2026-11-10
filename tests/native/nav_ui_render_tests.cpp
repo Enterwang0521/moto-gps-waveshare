@@ -241,6 +241,32 @@ void test_music_page_state_and_fallback() {
   CHECK(moto_nav_ui_get_page() != MOTO_UI_PAGE_MUSIC);
 }
 
+void record_shortcut(uint8_t slot, void *context) {
+  *static_cast<uint8_t *>(context) = slot;
+}
+
+void test_shortcuts_page_state_and_fallback() {
+  moto_nav_ui_set_shortcuts_page_enabled(1);
+  moto_nav_ui_set_page(MOTO_UI_PAGE_SHORTCUTS);
+  CHECK(moto_nav_ui_get_page() == MOTO_UI_PAGE_SHORTCUTS);
+  uint8_t selected = 0;
+  moto_nav_ui_set_shortcut_callback(record_shortcut, &selected);
+  lv_obj_t *page = lv_obj_get_child(lv_screen_active(), MOTO_UI_PAGE_SHORTCUTS);
+  for (int i = 0; i < 3; ++i) {
+    lv_obj_t *button = lv_obj_get_child(page, i + 2);
+    lv_obj_send_event(button, LV_EVENT_CLICKED, nullptr);
+    CHECK(selected == i + 1);
+  }
+  moto_nav_ui_set_shortcut_callback(nullptr, nullptr);
+  const Frame shortcuts = capture();
+  moto_nav_ui_set_page(MOTO_UI_PAGE_NAVIGATION);
+  CHECK(capture().hash != shortcuts.hash);
+  moto_nav_ui_set_page(MOTO_UI_PAGE_SHORTCUTS);
+  CHECK(capture().hash == shortcuts.hash);
+  moto_nav_ui_set_shortcuts_page_enabled(0);
+  CHECK(moto_nav_ui_get_page() == MOTO_UI_PAGE_NAVIGATION);
+}
+
 void test_phone_lifecycle_renders_deterministically() {
   // The connection lifecycle is a full-screen overlay for the empty
   // navigation page; cycle it there and require visually distinct terminal
@@ -435,6 +461,7 @@ int main(int argc, char **argv) {
   test_frames_are_deterministic();
   test_clearing_geometry_leaves_no_residue();
   test_music_page_state_and_fallback();
+  test_shortcuts_page_state_and_fallback();
   test_phone_lifecycle_renders_deterministically();
   test_demo_mode_visual_contract();
   test_capacity_payloads_render_stably();

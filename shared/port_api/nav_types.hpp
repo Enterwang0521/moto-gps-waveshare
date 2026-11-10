@@ -43,6 +43,7 @@ enum class DisplayPage : std::uint8_t {
   Compass,
   Music,
   Shortcuts,
+  Presets,
 };
 
 enum class ManeuverType : std::uint8_t {

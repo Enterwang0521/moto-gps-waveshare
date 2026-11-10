@@ -92,6 +92,7 @@ final class SharedNavigationRuntime {
         case 2: name = "compass"
         case 3: name = "music"
         case 4: name = "shortcuts"
+        case 5: name = "presets"
         default: return false
         }
         publish(bridge.selectDisplayPageName(name))

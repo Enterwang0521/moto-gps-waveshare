@@ -9,6 +9,9 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "moto/ble_protocol/ble_protocol.hpp"
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+#include "apple_media_client.h"
+#endif
 
 struct ble_gap_event;
 struct ble_gatt_access_ctxt;
@@ -29,6 +32,12 @@ class BleNavTransport {
   void set_callbacks(MessageCallback message_callback,
                      LinkCallback link_callback,
                      void* context) noexcept;
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+  void set_media_callback(AppleMediaClient::StateCallback callback, void* context) {
+    apple_media_.set_callback(callback, context);
+  }
+  bool change_volume(bool increase) { return apple_media_.change_volume(increase); }
+#endif
   esp_err_t start();
   bool send_message(const moto::ble::Message& message,
                     std::uint8_t frame_flags = 0);
@@ -95,6 +104,10 @@ class BleNavTransport {
   std::size_t negotiated_frame_size() const noexcept;
 
   static BleNavTransport* active_instance_;
+
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+  AppleMediaClient apple_media_;
+#endif
 
   MessageCallback message_callback_ = nullptr;
   LinkCallback link_callback_ = nullptr;

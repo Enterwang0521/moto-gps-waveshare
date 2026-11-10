@@ -9,6 +9,7 @@ namespace moto::test {
 void reset_phone_nav_bridge_probe();
 void emit_page_change(moto_ui_page_t page);
 void emit_music_command(moto_music_command_t command);
+void emit_shortcut(uint8_t slot);
 void emit_demo_change(bool enabled);
 int phone_nav_bridge_apply_count();
 int phone_nav_bridge_board_lock_count();
@@ -24,6 +25,7 @@ uint8_t phone_nav_bridge_last_building_footprint_count();
 uint8_t phone_nav_bridge_last_building_class();
 moto_ui_phone_connection_t phone_nav_bridge_last_phone_connection();
 bool phone_nav_bridge_music_page_enabled();
+bool phone_nav_bridge_shortcuts_page_enabled();
 bool phone_nav_bridge_media_connected();
 bool phone_nav_bridge_media_playing();
 bool phone_nav_bridge_media_like_available();

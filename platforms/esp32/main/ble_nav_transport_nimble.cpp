@@ -34,6 +34,11 @@ const ble_uuid128_t kRxUuid = BLE_UUID128_INIT(
 const ble_uuid128_t kTxUuid = BLE_UUID128_INIT(
     0x00, 0x10, 0x8e, 0x4e, 0xa5, 0x40, 0x57, 0x9c,
     0x6a, 0x4b, 0x0c, 0xb5, 0x02, 0xa0, 0x57, 0x7e);
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+const ble_uuid128_t kAppleMediaUuid = BLE_UUID128_INIT(
+    0xdc, 0xf8, 0x55, 0xad, 0x02, 0xc5, 0xf4, 0x8e,
+    0x3a, 0x43, 0x36, 0x0f, 0x2b, 0x50, 0xd3, 0x89);
+#endif
 
 ble_gatt_chr_def g_characteristics[3]{};
 ble_gatt_svc_def g_services[2]{};
@@ -226,6 +231,9 @@ int BleNavTransport::gap_event(ble_gap_event* event, void* argument) {
                  event->connect.conn_handle,
                  self->encrypted_.load() ? 1U : 0U,
                  self->subscribed_.load() ? 1U : 0U);
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+        self->apple_media_.connect(event->connect.conn_handle);
+#endif
       } else {
         ESP_LOGW(kTag, "connection failed: status=%d",
                  event->connect.status);
@@ -234,6 +242,9 @@ int BleNavTransport::gap_event(ble_gap_event* event, void* argument) {
       return 0;
 
     case BLE_GAP_EVENT_DISCONNECT:
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+      self->apple_media_.disconnect();
+#endif
       ESP_LOGI(kTag, "phone disconnected: reason=%d",
                event->disconnect.reason);
       self->connected_.store(false);
@@ -245,6 +256,14 @@ int BleNavTransport::gap_event(ble_gap_event* event, void* argument) {
       self->connection_epoch_.fetch_add(1);
       self->advertise();
       return 0;
+
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    case BLE_GAP_EVENT_NOTIFY_RX:
+      self->apple_media_.notification(event->notify_rx.conn_handle,
+                                      event->notify_rx.attr_handle,
+                                      event->notify_rx.om);
+      return 0;
+#endif
 
     case BLE_GAP_EVENT_SUBSCRIBE: {
       if (!moto::esp32::is_tx_subscription_event(
@@ -328,6 +347,18 @@ void BleNavTransport::advertise() {
   fields.uuids128 = const_cast<ble_uuid128_t*>(&kServiceUuid);
   fields.num_uuids128 = 1;
   fields.uuids128_is_complete = 1;
+
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+  // The primary advertisement is full; request the iPhone media service in
+  // the scan response while retaining the navigation service in the advert.
+  ble_hs_adv_fields response{};
+  response.sol_uuids128 = &kAppleMediaUuid;
+  response.sol_num_uuids128 = 1;
+  const int response_result = ble_gap_adv_rsp_set_fields(&response);
+  if (response_result != 0) {
+    ESP_LOGW(kTag, "media solicitation rejected: rc=%d", response_result);
+  }
+#endif
 
   int result = ble_gap_adv_set_fields(&fields);
   if (result != 0) {
@@ -618,6 +649,12 @@ void BleNavTransport::send_connection_status(
                         moto::ble::CapabilityMediaState |
                         moto::ble::CapabilityTouchCommands |
                         moto::ble::CapabilityMusicCommands |
+#if !defined(MOTO_BOARD_SMARTRING_PLUS)
+                        moto::ble::CapabilityShortcuts |
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+                        moto::ble::CapabilityPresetRoutes |
+#endif
+#endif
                         moto::ble::CapabilityCommandAck |
                         moto::ble::CapabilityMapScene;
   status.session_id = session_id;
@@ -769,6 +806,11 @@ bool BleNavTransport::send_from_bridge(
     const moto::ble::Message& message,
     std::uint8_t frame_flags,
     void* context) {
-  return static_cast<BleNavTransport*>(context)->send_message(
-      message, frame_flags);
+  auto* self = static_cast<BleNavTransport*>(context);
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+  if (const auto* command = std::get_if<moto::ble::DeviceCommand>(&message)) {
+    if (self->apple_media_.send(command->kind)) return true;
+  }
+#endif
+  return self->send_message(message, frame_flags);
 }

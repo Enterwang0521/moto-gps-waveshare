@@ -47,6 +47,8 @@ moto_ui_page_t map_page(DisplayPage page) {
     case DisplayPage::Speed: return MOTO_UI_PAGE_SPEED;
     case DisplayPage::Compass: return MOTO_UI_PAGE_COMPASS;
     case DisplayPage::Music: return MOTO_UI_PAGE_MUSIC;
+    case DisplayPage::Shortcuts: return MOTO_UI_PAGE_SHORTCUTS;
+    case DisplayPage::Presets: return MOTO_UI_PAGE_PRESETS;
   }
   return MOTO_UI_PAGE_NAVIGATION;
 }

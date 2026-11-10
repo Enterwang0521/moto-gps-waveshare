@@ -296,6 +296,44 @@ void test_music_capability_state_and_touch_commands() {
   }
 }
 
+void test_shortcut_capability_and_commands() {
+  moto::test::reset_phone_nav_bridge_probe();
+  moto::nav::NavPresenter presenter;
+  PhoneNavBridge bridge(presenter);
+  MusicSenderContext sender;
+  bridge.set_sender(record_music_sender, &sender);
+  bridge.install_ui_callbacks();
+  bridge.on_link_state(true);
+  moto::ble::ConnectionStatus phone;
+  phone.role = moto::ble::EndpointRole::Phone;
+  phone.state = moto::ble::ConnectionState::Ready;
+  phone.session_id = 55;
+  CHECK(bridge.on_message(make_message(phone, 1)) == moto::ble::AckStatus::Ok);
+  pump(bridge);
+  CHECK(!moto::test::phone_nav_bridge_shortcuts_page_enabled());
+  moto::test::emit_shortcut(1);
+  CHECK(sender.commands.empty());
+  phone.capabilities |= moto::ble::CapabilityShortcuts;
+  CHECK(bridge.on_message(make_message(phone, 2)) == moto::ble::AckStatus::Ok);
+  pump(bridge);
+  CHECK(moto::test::phone_nav_bridge_shortcuts_page_enabled());
+  moto::test::emit_shortcut(0);
+  moto::test::emit_shortcut(3);
+  moto::test::emit_shortcut(4);
+  CHECK(sender.commands.size() == 1);
+  if (!sender.commands.empty()) {
+    CHECK(sender.commands[0].kind == moto::ble::DeviceCommandKind::RunShortcut);
+    CHECK(sender.commands[0].page == moto::ble::DisplayPage::Shortcuts);
+    CHECK(sender.commands[0].x == 3);
+    CHECK((sender.flags[0] & moto::ble::AckRequested) != 0U);
+  }
+  bridge.on_link_state(false);
+  pump(bridge);
+  CHECK(!moto::test::phone_nav_bridge_shortcuts_page_enabled());
+  moto::test::emit_shortcut(1);
+  CHECK(sender.commands.size() == 1);
+}
+
 void test_demo_uses_the_production_presenter_path() {
   moto::test::reset_phone_nav_bridge_probe();
   moto::nav::NavPresenter presenter;
@@ -572,6 +610,7 @@ int main() {
   test_ble_submission_never_waits_for_lvgl_and_retries_latest_state();
   test_phone_connection_lifecycle_reaches_the_ui();
   test_music_capability_state_and_touch_commands();
+  test_shortcut_capability_and_commands();
   test_demo_uses_the_production_presenter_path();
   test_ios_demo_token_attaches_context_and_live_route_clears_it();
   test_map_scene_atomically_replaces_roads_and_buildings_at_capacity();

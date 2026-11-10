@@ -61,6 +61,7 @@ moto::ble::DisplayPage DisplayPageFromName(NSString *name) {
   if ([name isEqualToString:@"compass"]) return moto::ble::DisplayPage::Compass;
   if ([name isEqualToString:@"music"]) return moto::ble::DisplayPage::Music;
   if ([name isEqualToString:@"shortcuts"]) return moto::ble::DisplayPage::Shortcuts;
+  if ([name isEqualToString:@"presets"]) return moto::ble::DisplayPage::Presets;
   return moto::ble::DisplayPage::Navigation;
 }
 
@@ -441,6 +442,19 @@ moto::ble::ConnectionStatus PhoneConnectionStatus(
   const auto status = PhoneConnectionStatus(
       storage, moto::ble::ConnectionState::Ready, sessionID);
   return EncodeMessage(storage, moto::ble::Message{status}, 0, error);
+}
+
+- (NSArray<NSData *> *)encodePresetOperation:(uint8_t)operation
+    slot:(uint8_t)slot token:(uint32_t)token size:(uint32_t)size crc:(uint32_t)crc
+    offset:(uint32_t)offset name:(NSString *)name data:(NSData *)data error:(NSError **)error {
+  moto::ble::PresetRoute p;
+  p.operation=operation;p.slot=slot;p.token=token;p.total_size=size;p.crc32=crc;p.offset=offset;
+  p.name=Utf8Prefix(name,63);
+  if(data.length) {
+    const auto* bytes=static_cast<const uint8_t*>(data.bytes);
+    p.data.assign(bytes,bytes+data.length);
+  }
+  return EncodeMessage(static_cast<CodecStorage *>(_storage),moto::ble::Message{p},moto::ble::AckRequested,error);
 }
 
 - (NSArray<NSData *> *)encodeCurrentTimeWithError:(NSError **)error {

@@ -8,6 +8,9 @@ final class CoreLocationNavigationSource: NSObject, NavigationLocationSource {
     private var onFix: (@MainActor (NavigationFix) -> Void)?
     private var onFailure: (@MainActor (String) -> Void)?
     private var wantsUpdates = false
+    var keepsPresetStandby = false
+    var backgroundAuthorized: Bool { manager.authorizationStatus == .authorizedAlways }
+
 
     override init() {
         super.init()
@@ -52,7 +55,7 @@ final class CoreLocationNavigationSource: NSObject, NavigationLocationSource {
 
     func stop() {
         wantsUpdates = false
-        manager.stopUpdatingLocation()
+        if !keepsPresetStandby { manager.stopUpdatingLocation() }
         onFix = nil
         onFailure = nil
     }

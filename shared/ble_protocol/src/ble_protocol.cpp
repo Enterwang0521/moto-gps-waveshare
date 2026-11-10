@@ -238,7 +238,7 @@ bool valid_coordinate_system(CoordinateSystem system) {
 }
 
 bool valid_display_page(DisplayPage page) {
-  return enum_at_most(page, DisplayPage::Shortcuts);
+  return enum_at_most(page, DisplayPage::Presets);
 }
 
 bool valid_map_road_class(MapRoadClass road_class) {
@@ -263,6 +263,7 @@ bool valid_command_kind(DeviceCommandKind kind) {
     case DeviceCommandKind::MusicNext:
     case DeviceCommandKind::MusicLike:
     case DeviceCommandKind::RunShortcut:
+    case DeviceCommandKind::SelectPresetRoute:
       return true;
   }
   return false;
@@ -293,6 +294,18 @@ Error validate(const Heartbeat& value) {
   return value.session_id == 0 || value.status_flags != 0
              ? Error::OutOfRange
              : Error::None;
+}
+
+Error validate(const PresetRoute& v) {
+  if(v.slot < 1 || v.slot > 4 || v.operation < 1 || v.operation > 4 ||
+     v.name.size() > 63 || v.name.find('\0') != std::string::npos ||
+     v.total_size > 262144 || v.data.size() > 512 || v.offset > v.total_size ||
+     v.data.size() > v.total_size - v.offset) return Error::OutOfRange;
+  if(v.operation != 4 && (v.token == 0 || v.total_size == 0)) return Error::OutOfRange;
+  if(v.operation == 1 && (v.name.empty() || v.offset != 0 || !v.data.empty())) return Error::OutOfRange;
+  if(v.operation == 2 && v.data.empty()) return Error::OutOfRange;
+  if((v.operation == 3 || v.operation == 4) && !v.data.empty()) return Error::OutOfRange;
+  return Error::None;
 }
 
 Error validate(const TimeSync& value) {
@@ -484,6 +497,8 @@ Error validate(const DeviceCommand& value) {
   if (!valid_command_kind(value.kind) || !valid_display_page(value.page)) {
     return Error::InvalidEnum;
   }
+  if (value.kind == DeviceCommandKind::SelectPresetRoute &&
+      (value.page != DisplayPage::Presets || (value.x == 0 && value.y == 0))) return Error::OutOfRange;
   if (value.kind == DeviceCommandKind::RunShortcut &&
       (value.page != DisplayPage::Shortcuts || value.x < 1 || value.x > 3 ||
        value.y != kUnknownTouchCoordinate)) {
@@ -514,6 +529,12 @@ BytesResult encode_payload(const T& value) {
     writer.u32(value.session_id);
     writer.u32(value.monotonic_ms);
     writer.u16(value.status_flags);
+  } else if constexpr (std::is_same_v<T, PresetRoute>) {
+    writer.u8(value.operation); writer.u8(value.slot);
+    writer.u32(value.token); writer.u32(value.total_size);
+    writer.u32(value.crc32); writer.u32(value.offset);
+    writer.string_u8(value.name); writer.u16(static_cast<uint16_t>(value.data.size()));
+    for(auto byte : value.data) writer.u8(byte);
   } else if constexpr (std::is_same_v<T, TimeSync>) {
     writer.u32(value.unix_seconds);
     writer.u16(static_cast<std::uint16_t>(value.utc_offset_minutes));
@@ -679,6 +700,20 @@ MessageResult decode_heartbeat(ByteView payload) {
     reader.require_end();
   }
   return decoded_result(std::move(value), reader);
+}
+
+MessageResult decode_preset_route(ByteView payload) {
+  Reader reader(payload); PresetRoute v;
+  if(begin_payload(reader)) {
+    v.operation=reader.u8(); v.slot=reader.u8(); v.token=reader.u32();
+    v.total_size=reader.u32(); v.crc32=reader.u32(); v.offset=reader.u32();
+    v.name=reader.string_u8(63);
+    const auto count=reader.u16();
+    if(count>512) return {{}, Error::TooManyItems, 0};
+    for(unsigned i=0;i<count;++i) v.data.push_back(reader.u8());
+    reader.require_end();
+  }
+  return decoded_result(std::move(v),reader);
 }
 
 MessageResult decode_time_sync(ByteView payload) {
@@ -1393,6 +1428,11 @@ bool Heartbeat::operator==(const Heartbeat& rhs) const noexcept {
          std::tie(rhs.session_id, rhs.monotonic_ms, rhs.status_flags);
 }
 
+bool PresetRoute::operator==(const PresetRoute& r) const noexcept {
+  return std::tie(operation,slot,token,total_size,crc32,offset,name,data) ==
+         std::tie(r.operation,r.slot,r.token,r.total_size,r.crc32,r.offset,r.name,r.data);
+}
+
 bool TimeSync::operator==(const TimeSync& rhs) const noexcept {
   return unix_seconds == rhs.unix_seconds && utc_offset_minutes == rhs.utc_offset_minutes;
 }
@@ -1491,6 +1531,8 @@ MessageType message_type(const Message& message) noexcept {
           return MessageType::ConnectionStatus;
         } else if constexpr (std::is_same_v<T, Heartbeat>) {
           return MessageType::Heartbeat;
+        } else if constexpr (std::is_same_v<T, PresetRoute>) {
+          return MessageType::PresetRoute;
         } else if constexpr (std::is_same_v<T, TimeSync>) {
           return MessageType::TimeSync;
         } else if constexpr (std::is_same_v<T, Ack>) {
@@ -1523,6 +1565,7 @@ MessageResult decode_message(MessageType type, ByteView payload) {
       return decode_connection_status(payload);
     case MessageType::Heartbeat: return decode_heartbeat(payload);
     case MessageType::TimeSync: return decode_time_sync(payload);
+    case MessageType::PresetRoute: return decode_preset_route(payload);
     case MessageType::Ack: return decode_ack(payload);
     case MessageType::NavigationSnapshot:
       return decode_navigation_snapshot(payload);

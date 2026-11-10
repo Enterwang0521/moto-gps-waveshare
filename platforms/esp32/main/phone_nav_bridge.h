@@ -14,6 +14,9 @@
 #include "freertos/task.h"
 #endif
 
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+#include "preset_route_service.h"
+#endif
 class PhoneNavBridge {
  public:
   using SendCallback = bool (*)(const moto::ble::Message& message,
@@ -34,11 +37,21 @@ class PhoneNavBridge {
 #endif
   void on_link_state(bool active);
   void on_imu_sample(float heading_rate_dps, std::uint64_t sample_ms);
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+  void on_apple_media(bool active, const moto::ble::MediaState& state, int volume_percent);
+#endif
   void update_demo(std::uint64_t now_ms);
   moto::ble::AckStatus on_message(
       const moto::ble::ReassembledMessage& message);
 
  private:
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+  PresetRouteService preset_store_;
+  std::string preset_status_="SELECT ROUTE";
+  uint16_t preset_command_id_=0;
+  uint64_t preset_deadline_ms_=0;
+  static void preset_selected(uint8_t slot,void* context);
+#endif
   struct GeometryAssembly {
     bool active = false;
     bool complete = false;
@@ -57,6 +70,7 @@ class PhoneNavBridge {
 
   static void page_changed(moto_ui_page_t page, void* context);
   static void music_command(moto_music_command_t command, void* context);
+  static void shortcut_command(uint8_t slot, void* context);
   static void demo_changed(uint8_t enabled, void* context);
 
   void consume_navigation(const moto::ble::NavigationSnapshot& input);
@@ -104,13 +118,24 @@ class PhoneNavBridge {
   bool link_active_ = false;
   moto_ui_phone_connection_t ui_phone_connection_ = MOTO_UI_PHONE_OFFLINE;
   moto::ble::MediaState media_state_{};
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+  moto::ble::MediaState phone_media_state_{};
+  bool apple_media_active_ = false;
+  bool render_apple_media_active_ = false;
+  int apple_volume_percent_ = -1;
+  int render_apple_volume_percent_ = -1;
+#endif
   moto::ble::MediaState render_media_state_{};
   bool music_page_enabled_ = false;
   bool render_music_page_enabled_ = false;
+  bool shortcuts_page_enabled_ = false;
+  bool render_shortcuts_page_enabled_ = false;
   moto_ui_phone_connection_t render_phone_connection_ =
       MOTO_UI_PHONE_OFFLINE;
   bool render_demo_active_ = false;
+  uint32_t pending_clock_seconds_ = 0;
   enum RenderFlag : std::uint32_t {
+    RenderClock = 1U << 3U,
     RenderNavigation = 1U << 0U,
     RenderMotion = 1U << 1U,
     RenderMedia = 1U << 2U,

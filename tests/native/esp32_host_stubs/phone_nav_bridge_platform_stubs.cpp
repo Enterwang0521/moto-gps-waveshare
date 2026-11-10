@@ -14,6 +14,8 @@ moto_page_change_callback_t page_callback = nullptr;
 void* page_callback_context = nullptr;
 moto_music_command_callback_t music_callback = nullptr;
 void* music_callback_context = nullptr;
+moto_shortcut_callback_t shortcut_callback = nullptr;
+void* shortcut_callback_context = nullptr;
 moto_demo_change_callback_t demo_callback = nullptr;
 void* demo_callback_context = nullptr;
 int apply_count = 0;
@@ -33,6 +35,7 @@ moto_maneuver_t last_maneuver = MOTO_MANEUVER_STRAIGHT;
 uint32_t last_distance_to_maneuver_m = 0;
 moto_ui_phone_connection_t last_phone_connection = MOTO_UI_PHONE_OFFLINE;
 bool music_page_enabled = false;
+bool shortcuts_page_enabled = false;
 bool media_connected = false;
 bool media_playing = false;
 bool media_like_available = false;
@@ -130,6 +133,16 @@ extern "C" void moto_nav_ui_set_music_page_enabled(uint8_t enabled) {
   music_page_enabled = enabled != 0;
 }
 
+extern "C" void moto_nav_ui_set_shortcuts_page_enabled(uint8_t enabled) {
+  const std::lock_guard<std::mutex> lock(probe_mutex);
+  shortcuts_page_enabled = enabled != 0;
+}
+extern "C" void moto_nav_ui_set_shortcut_callback(moto_shortcut_callback_t callback, void* context) {
+  const std::lock_guard<std::mutex> lock(probe_mutex);
+  shortcut_callback = callback;
+  shortcut_callback_context = context;
+}
+
 extern "C" void moto_nav_ui_set_music_command_callback(
     moto_music_command_callback_t callback,
     void* context) {
@@ -172,6 +185,7 @@ void reset_phone_nav_bridge_probe() {
   last_distance_to_maneuver_m = 0;
   last_phone_connection = MOTO_UI_PHONE_OFFLINE;
   music_page_enabled = false;
+  shortcuts_page_enabled = false;
   media_connected = false;
   media_playing = false;
   media_like_available = false;
@@ -208,6 +222,19 @@ void emit_music_command(moto_music_command_t command) {
   if (callback == nullptr) return;
   const std::lock_guard<std::recursive_mutex> lock(board_mutex);
   callback(command, context);
+}
+
+void emit_shortcut(uint8_t slot) {
+  moto_shortcut_callback_t callback;
+  void* context;
+  {
+    const std::lock_guard<std::mutex> lock(probe_mutex);
+    callback = shortcut_callback;
+    context = shortcut_callback_context;
+  }
+  if (callback == nullptr) return;
+  const std::lock_guard<std::recursive_mutex> lock(board_mutex);
+  callback(slot, context);
 }
 
 void emit_demo_change(bool enabled) {
@@ -291,6 +318,11 @@ moto_ui_phone_connection_t phone_nav_bridge_last_phone_connection() {
 bool phone_nav_bridge_music_page_enabled() {
   const std::lock_guard<std::mutex> lock(probe_mutex);
   return music_page_enabled;
+}
+
+bool phone_nav_bridge_shortcuts_page_enabled() {
+  const std::lock_guard<std::mutex> lock(probe_mutex);
+  return shortcuts_page_enabled;
 }
 
 bool phone_nav_bridge_media_connected() {

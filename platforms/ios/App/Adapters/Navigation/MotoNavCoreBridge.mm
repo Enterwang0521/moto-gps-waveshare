@@ -67,6 +67,7 @@ NSString *DisplayPageName(moto::nav::DisplayPage page) {
     case moto::nav::DisplayPage::Compass: return @"compass";
     case moto::nav::DisplayPage::Music: return @"music";
     case moto::nav::DisplayPage::Shortcuts: return @"shortcuts";
+    case moto::nav::DisplayPage::Presets: return @"presets";
   }
 }
 
@@ -314,6 +315,7 @@ struct BridgeStorage {
   if ([pageName isEqualToString:@"compass"]) page = moto::nav::DisplayPage::Compass;
   if ([pageName isEqualToString:@"music"]) page = moto::nav::DisplayPage::Music;
   if ([pageName isEqualToString:@"shortcuts"]) page = moto::nav::DisplayPage::Shortcuts;
+  if ([pageName isEqualToString:@"presets"]) page = moto::nav::DisplayPage::Presets;
   return [self handle:moto::nav::DisplayPageSelected{page}];
 }
 

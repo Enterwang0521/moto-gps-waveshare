@@ -13,6 +13,16 @@ add_library(moto_nav_ui STATIC
     src/moto_nav_ui.cpp
 )
 
+if(MOTO_SMARTRING_PREVIEW)
+    target_sources(moto_nav_ui PRIVATE
+        ${CMAKE_SOURCE_DIR}/platforms/smartring/assets/moto_music_font_16_a.c
+        ${CMAKE_SOURCE_DIR}/platforms/smartring/assets/moto_music_font_16_b.c
+        ${CMAKE_SOURCE_DIR}/platforms/smartring/assets/moto_pixel_16.c
+        ${CMAKE_SOURCE_DIR}/platforms/smartring/assets/moto_pixel_24.c
+        ${CMAKE_SOURCE_DIR}/platforms/smartring/assets/moto_pixel_48.c
+    )
+endif()
+
 target_include_directories(moto_nav_ui PUBLIC include)
 target_link_libraries(moto_nav_ui PUBLIC lvgl)
 target_compile_features(moto_nav_ui PUBLIC cxx_std_17)

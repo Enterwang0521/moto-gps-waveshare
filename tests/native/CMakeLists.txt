@@ -137,3 +137,13 @@ add_test(NAME ble_protocol_tests COMMAND ble_protocol_tests)
 add_test(NAME connection_epoch_gate_tests COMMAND connection_epoch_gate_tests)
 add_test(NAME motion_heading_fusion_tests COMMAND motion_heading_fusion_tests)
 add_test(NAME phone_nav_bridge_tests COMMAND phone_nav_bridge_tests)
+
+add_executable(preset_route_store_tests
+  preset_route_store_tests.cpp
+  ../../shared/preset_routes/preset_route_store.cpp)
+target_include_directories(preset_route_store_tests PRIVATE ../../shared ../../shared/ble_protocol/include)
+target_link_libraries(preset_route_store_tests PRIVATE moto_ble_protocol)
+target_compile_features(preset_route_store_tests PRIVATE cxx_std_17)
+# Assertions are the checks in this focused persistence executable, including Release CI.
+target_compile_options(preset_route_store_tests PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-UNDEBUG>)
+add_test(NAME preset_route_store_tests COMMAND preset_route_store_tests)

@@ -15,7 +15,9 @@
 
 namespace {
 constexpr char kTag[] = "moto_gps";
+#if !defined(MOTO_BOARD_SMARTRING_PLUS)
 constexpr std::uint64_t kPowerHoldMs = 3'000;
+#endif
 
 moto::ble::AckStatus receive_phone_message(
     const moto::ble::ReassembledMessage& message, void* context) {
@@ -25,6 +27,20 @@ moto::ble::AckStatus receive_phone_message(
 void update_phone_link(bool active, void* context) {
   static_cast<PhoneNavBridge*>(context)->on_link_state(active);
 }
+
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+void update_apple_media(bool active, const moto::ble::MediaState& state,
+                        int volume_percent, void* context) {
+  static_cast<PhoneNavBridge*>(context)->on_apple_media(active, state, volume_percent);
+}
+
+void change_music_volume(std::int8_t direction, void* context) {
+  auto* transport = static_cast<BleNavTransport*>(context);
+  if (!transport->change_volume(direction > 0)) {
+    ESP_LOGW(kTag, "volume command unavailable");
+  }
+}
+#endif
 
 void update_motion_heading(float heading_rate_dps, std::uint64_t sample_ms,
                            void* context) {
@@ -44,6 +60,7 @@ void demo_tick_task(void* context) {
   }
 }
 
+#if !defined(MOTO_BOARD_SMARTRING_PLUS)
 void power_button_task(void*) {
   std::uint64_t pressed_since_ms = 0;
   // The AXP2101 needs roughly a one-second press to power the board on, so
@@ -99,6 +116,7 @@ void power_button_task(void*) {
     vTaskDelay(pdMS_TO_TICKS(20));
   }
 }
+#endif
 } // namespace
 
 extern "C" void app_main(void) {
@@ -177,6 +195,9 @@ extern "C" void app_main(void) {
   presenter.apply_to_lvgl();
   moto_nav_ui_set_music_page_enabled(0);
   phone_bridge.install_ui_callbacks();
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+  moto_nav_ui_set_volume_change_callback(change_music_volume, &transport);
+#endif
   board_port_unlock();
 
   if (!phone_bridge.start_renderer()) {
@@ -188,6 +209,9 @@ extern "C" void app_main(void) {
   phone_bridge.set_sender(BleNavTransport::send_from_bridge, &transport);
   transport.set_callbacks(receive_phone_message, update_phone_link,
                           &phone_bridge);
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+  transport.set_media_callback(update_apple_media, &phone_bridge);
+#endif
   const esp_err_t ble_result = transport.start();
   if (ble_result != ESP_OK) {
     ESP_LOGE(kTag, "BLE startup failed; display remains in offline mode: %s",
@@ -208,10 +232,12 @@ extern "C" void app_main(void) {
                   nullptr) != pdPASS) {
     ESP_LOGW(kTag, "navigation demo task could not start");
   }
+#if !defined(MOTO_BOARD_SMARTRING_PLUS)
   if (xTaskCreate(power_button_task, "moto_power", 3'072, nullptr, 3,
                   nullptr) != pdPASS) {
     ESP_LOGW(kTag, "PWR long-hold task could not start");
   }
+#endif
 
   ESP_LOGI(kTag,
            "iPhone BLE + QMI heading -> NavPresenter -> shared LVGL running");

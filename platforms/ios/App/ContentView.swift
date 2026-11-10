@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var showsDataUse = false
     @State private var showsGatewaySettings = false
     @State private var showsShortcutSettings = false
+    @State private var showsPresetRoutes = false
 
     var body: some View {
         NavigationStack(path: navigationPath) {
@@ -55,6 +56,7 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showsDataUse) { DataUseView() }
         .sheet(isPresented: $showsGatewaySettings) { GatewaySettingsView(model: model) }
+        .sheet(isPresented: $showsPresetRoutes) { PresetRoutesView(model: model) }
         .sheet(isPresented: $showsShortcutSettings) { ShortcutSettingsView() }
     }
 
@@ -137,6 +139,9 @@ struct ContentView: View {
                     Text("连接圆屏后，导航指引会自动同步。")
                 }
                 Section {
+                    Button { showsPresetRoutes = true } label: {
+                        Label("TF 预设路线", systemImage: "sdcard")
+                    }
                     Button { showsShortcutSettings = true } label: {
                         Label("圆屏快捷指令", systemImage: "square.stack.3d.up")
                             .foregroundStyle(Color.primary)
@@ -370,6 +375,9 @@ struct ContentView: View {
                         .accessibilityIdentifier("route-preview-loading")
                     }
                 } else if model.hasRoutePreview {
+                    Section {
+                        Button("保存为 TF 预设路线") { showsPresetRoutes = true }
+                    }
                     Section {
                         RouteOverviewMap(
                             candidates: model.routePreviewCandidates,

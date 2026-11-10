@@ -10,12 +10,51 @@
 #include "lvgl.h"
 
 LV_FONT_DECLARE(moto_font_nav_16);
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+LV_FONT_DECLARE(moto_music_font_16_a);
+LV_FONT_DECLARE(moto_music_font_16_b);
+LV_FONT_DECLARE(moto_pixel_16);
+LV_FONT_DECLARE(moto_pixel_24);
+LV_FONT_DECLARE(moto_pixel_48);
+#define RIDER_PIXEL_16 (&moto_pixel_16)
+#define RIDER_PIXEL_24 (&moto_pixel_24)
+#define RIDER_PIXEL_48 (&moto_pixel_48)
+#else
+#define RIDER_PIXEL_16 (&lv_font_montserrat_16)
+#define RIDER_PIXEL_24 (&lv_font_montserrat_20)
+#define RIDER_PIXEL_48 (&lv_font_montserrat_48)
+#endif
 
 namespace {
+lv_obj_t *clock_label = nullptr;
+lv_timer_t *clock_timer = nullptr;
+bool clock_synced = false;
+uint32_t clock_seconds = 0, clock_tick = 0;
+void clock_update(lv_timer_t *) {
+    if(!clock_label) return;
+    if(!clock_synced) { lv_label_set_text(clock_label, "--:--"); return; }
+    const uint32_t elapsed = lv_tick_elaps(clock_tick) / 1000;
+    clock_tick += elapsed * 1000;
+    clock_seconds = (clock_seconds + elapsed) % 86400;
+    char text[6];
+    std::snprintf(text, sizeof(text), "%02u:%02u",
+                  unsigned(clock_seconds / 3600), unsigned(clock_seconds / 60 % 60));
+    lv_label_set_text(clock_label, text);
+}
+void clock_destroy() {
+    if(clock_timer) lv_timer_delete(clock_timer);
+    clock_timer = nullptr;
+    clock_label = nullptr;
+}
+
 
 constexpr lv_color_t kBlack = LV_COLOR_MAKE(0x05, 0x06, 0x07);
 constexpr lv_color_t kWhite = LV_COLOR_MAKE(0xF3, 0xF4, 0xEF);
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+constexpr lv_color_t kIce = LV_COLOR_MAKE(0x00, 0xE8, 0xF2);
+#else
 constexpr lv_color_t kIce = LV_COLOR_MAKE(0xB8, 0xED, 0xF5);
+#endif
 constexpr lv_color_t kGraphite = LV_COLOR_MAKE(0x30, 0x35, 0x39);
 // Real surrounding roads need to remain legible on the AMOLED's true-black
 // background.  LV_OPA_70 is 70/255 (not 70 percent), which made the previous
@@ -27,9 +66,16 @@ constexpr lv_color_t kBuildingGray = LV_COLOR_MAKE(0x24, 0x29, 0x2C);
 constexpr lv_color_t kBuildingLandmark = LV_COLOR_MAKE(0x38, 0x40, 0x44);
 constexpr lv_color_t kQuiet = LV_COLOR_MAKE(0x78, 0x7E, 0x7F);
 constexpr lv_color_t kSoft = LV_COLOR_MAKE(0xAE, 0xB2, 0xB0);
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+constexpr lv_color_t kAmber = LV_COLOR_MAKE(0xFF, 0xDE, 0x38);
+#else
 constexpr lv_color_t kAmber = LV_COLOR_MAKE(0xE6, 0xC8, 0x4F);
+#endif
 constexpr lv_color_t kRed = LV_COLOR_MAKE(0xFF, 0x4B, 0x43);
 constexpr lv_color_t kGreen = LV_COLOR_MAKE(0x69, 0xD4, 0x94);
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+constexpr lv_color_t kArcadePink = LV_COLOR_MAKE(0xF8, 0x46, 0xB8);
+#endif
 constexpr double kPi = 3.14159265358979323846;
 constexpr int kCompassTickCount = 24;
 constexpr int kSpeedTickCount = 18;
@@ -161,23 +207,61 @@ struct Ui {
     lv_obj_t *compass_letters[4]{};
 
     lv_obj_t *music_source = nullptr;
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    lv_obj_t *music_source_glyphs[24]{};
+    char music_source_rendered[32]{};
+#endif
     lv_obj_t *music_title = nullptr;
     lv_obj_t *music_artist = nullptr;
     lv_obj_t *music_disc = nullptr;
     lv_obj_t *music_buttons[4]{};
     lv_obj_t *music_button_labels[4]{};
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    lv_obj_t *music_progress = nullptr;
+    lv_timer_t *music_progress_timer = nullptr;
+    std::uint32_t music_progress_updated_ms = 0;
+    std::uint32_t music_progress_base_ms = 0;
+    lv_obj_t *volume_arc = nullptr;
+    bool volume_available = false;
+    bool volume_dragging = false;
+    bool volume_drag_cancelled = false;
+    int volume_start_x = 0;
+    int volume_start_y = 0;
+    int volume_last_y = 0;
+    std::uint32_t volume_last_command_ms = 0;
+    moto_volume_change_callback_t volume_callback = nullptr;
+    void *volume_callback_context = nullptr;
+#endif
     moto_music_state_t music{};
     char music_source_text[32]{};
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    char music_title_text[128]{};
+    char music_artist_text[96]{};
+#else
     char music_title_text[64]{};
     char music_artist_text[48]{};
+#endif
 
     moto_music_command_callback_t music_callback = nullptr;
     void *music_callback_context = nullptr;
+    moto_shortcut_callback_t shortcut_callback = nullptr;
+    void *shortcut_callback_context = nullptr;
     moto_page_change_callback_t page_callback = nullptr;
     void *page_callback_context = nullptr;
     moto_demo_change_callback_t demo_callback = nullptr;
     void *demo_callback_context = nullptr;
     bool music_page_enabled = true;
+    bool shortcuts_page_enabled = false;
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    bool presets_page_enabled = true;
+#else
+    bool presets_page_enabled = false;
+#endif
+    lv_obj_t *preset_buttons[4]{};
+    lv_obj_t *preset_labels[4]{};
+    lv_obj_t *preset_status = nullptr;
+    moto_preset_callback_t preset_callback = nullptr;
+    void *preset_context = nullptr;
     bool demo_active = false;
     bool reduce_motion = false;
 } ui;
@@ -280,8 +364,10 @@ void update_page_dots() {
         lv_obj_set_size(ui.page_dots[i], px(active ? 16 : 5), px(5));
         lv_obj_set_style_radius(ui.page_dots[i], px(3), 0);
         lv_obj_set_style_bg_color(ui.page_dots[i], active ? kWhite : kGraphite, 0);
-        lv_obj_set_x(ui.page_dots[i], px(145 + i * 22 - (active ? 5 : 0)));
-        const bool available = i != MOTO_UI_PAGE_MUSIC || ui.music_page_enabled;
+        lv_obj_set_x(ui.page_dots[i], px(134 + i * 22 - (active ? 5 : 0)));
+        const bool available = (i != MOTO_UI_PAGE_MUSIC || ui.music_page_enabled) &&
+                               (i != MOTO_UI_PAGE_SHORTCUTS || ui.shortcuts_page_enabled) &&
+                               (i != MOTO_UI_PAGE_PRESETS || ui.presets_page_enabled);
         if(ui.page_dots_visible && available) {
             lv_obj_remove_flag(ui.page_dots[i], LV_OBJ_FLAG_HIDDEN);
         } else {
@@ -323,7 +409,9 @@ void install_interaction_wake(lv_obj_t *object) {
 
 void show_page(moto_ui_page_t page, bool reveal_on_same_page = false) {
     if(page < MOTO_UI_PAGE_NAVIGATION || page >= MOTO_UI_PAGE_COUNT) return;
-    if(page == MOTO_UI_PAGE_MUSIC && !ui.music_page_enabled) {
+    if((page == MOTO_UI_PAGE_MUSIC && !ui.music_page_enabled) ||
+       (page == MOTO_UI_PAGE_SHORTCUTS && !ui.shortcuts_page_enabled) ||
+       (page == MOTO_UI_PAGE_PRESETS && !ui.presets_page_enabled)) {
         page = MOTO_UI_PAGE_NAVIGATION;
     }
     const bool changed = page != ui.page;
@@ -353,9 +441,11 @@ void gesture_event(lv_event_t *) {
     } else {
         return;
     }
-    if(!ui.music_page_enabled && next == MOTO_UI_PAGE_MUSIC) {
-        next = direction == LV_DIR_LEFT ? MOTO_UI_PAGE_NAVIGATION
-                                        : MOTO_UI_PAGE_COMPASS;
+    while((next == MOTO_UI_PAGE_MUSIC && !ui.music_page_enabled) ||
+          (next == MOTO_UI_PAGE_SHORTCUTS && !ui.shortcuts_page_enabled) ||
+          (next == MOTO_UI_PAGE_PRESETS && !ui.presets_page_enabled)) {
+        next = direction == LV_DIR_LEFT ? (next + 1) % MOTO_UI_PAGE_COUNT
+            : (next + MOTO_UI_PAGE_COUNT - 1) % MOTO_UI_PAGE_COUNT;
     }
     const auto requested = static_cast<moto_ui_page_t>(next);
     if(ui.page_callback != nullptr) {
@@ -1059,6 +1149,61 @@ void draw_connection_symbol(lv_event_t *event) {
     const int center_y = area.y1 + px(73);
     const double phase = ui.lifecycle_phase_deg * kPi / 180.0;
 
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    if(ui.lifecycle_visual == LifecycleVisual::PhoneConnecting) {
+        const int frame[][2] = {{50,22},{58,22},{66,22},{74,22},{82,22},{90,22},
+                               {50,30},{90,30},{50,38},{90,38},{50,46},{90,46},
+                               {50,54},{90,54},{50,62},{90,62},{50,70},{90,70},
+                               {50,78},{90,78},{50,86},{90,86},{50,94},{90,94},
+                               {50,102},{58,102},{66,102},{74,102},{82,102},{90,102}};
+        for(const auto &point : frame) {
+            lv_draw_rect_dsc_t pixel;
+            lv_draw_rect_dsc_init(&pixel);
+            pixel.bg_color = kIce;
+            pixel.bg_opa = LV_OPA_COVER;
+            const lv_area_t square = {area.x1 + px(point[0]), area.y1 + px(point[1]),
+                                      area.x1 + px(point[0] + 7), area.y1 + px(point[1] + 7)};
+            lv_draw_rect(layer, &pixel, &square);
+        }
+        for(int i = 0; i < 3; ++i) {
+            lv_draw_rect_dsc_t pixel;
+            lv_draw_rect_dsc_init(&pixel);
+            pixel.bg_color = i == (ui.lifecycle_phase_deg / 30) % 3 ? kAmber : kArcadePink;
+            pixel.bg_opa = LV_OPA_COVER;
+            const lv_area_t square = {area.x1 + px(60 + i * 10), area.y1 + px(59),
+                                      area.x1 + px(66 + i * 10), area.y1 + px(65)};
+            lv_draw_rect(layer, &pixel, &square);
+        }
+        return;
+    }
+    if(ui.lifecycle_visual == LifecycleVisual::Ready) {
+        // A small pixel road with a travelling light keeps the idle screen
+        // animated without redrawing the whole display.
+        const int blocks[][2] = {{24,108},{32,100},{40,92},{48,84},{56,76},
+                                 {64,76},{72,76},{80,68},{88,60},{96,52},{104,44}};
+        const int active = (ui.lifecycle_phase_deg / 12) % 11;
+        for(int i = 0; i < 11; ++i) {
+            lv_draw_rect_dsc_t pixel;
+            lv_draw_rect_dsc_init(&pixel);
+            pixel.bg_color = i == active ? kAmber : (i < 6 ? kIce : kArcadePink);
+            pixel.bg_opa = LV_OPA_COVER;
+            const lv_area_t square = {area.x1 + px(blocks[i][0]), area.y1 + px(blocks[i][1]),
+                                      area.x1 + px(blocks[i][0] + 8), area.y1 + px(blocks[i][1] + 8)};
+            lv_draw_rect(layer, &pixel, &square);
+        }
+        const int stars[][2] = {{24,35},{120,82},{110,22},{35,125}};
+        for(int i = 0; i < 4; ++i) {
+            lv_draw_rect_dsc_t star;
+            lv_draw_rect_dsc_init(&star);
+            star.bg_color = i % 2 ? kAmber : kArcadePink;
+            star.bg_opa = ((ui.lifecycle_phase_deg / 45 + i) % 2) ? LV_OPA_COVER : LV_OPA_30;
+            const lv_area_t square = {area.x1 + px(stars[i][0]), area.y1 + px(stars[i][1]),
+                                      area.x1 + px(stars[i][0] + 5), area.y1 + px(stars[i][1] + 5)};
+            lv_draw_rect(layer, &star, &square);
+        }
+        return;
+    }
+#endif
     if(ui.lifecycle_visual == LifecycleVisual::Connected) {
         const int pulse = static_cast<int>(px(67) +
             std::lround((std::sin(phase) + 1.0) * px(3.0)));
@@ -1186,6 +1331,10 @@ void apply_lifecycle_content(LifecycleVisual visual) {
         case LifecycleVisual::PhoneConnecting:
             title = "CONNECTING";
             subtitle = "正在建立连接";
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+            kicker = "PLAYER 01 / LINK";
+            title_color = kIce;
+#endif
             break;
         case LifecycleVisual::Connected:
             title = "CONNECTED";
@@ -1193,8 +1342,14 @@ void apply_lifecycle_content(LifecycleVisual visual) {
             title_color = kGreen;
             break;
         case LifecycleVisual::Ready:
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+            kicker = "PLAYER 01 / READY";
+            title = "LET'S RIDE";
+            title_color = kAmber;
+#else
             kicker = "MOTO GPS / READY";
             title = "READY TO RIDE";
+#endif
             subtitle = "请在手机选择目的地";
             break;
         case LifecycleVisual::Planning:
@@ -1208,6 +1363,12 @@ void apply_lifecycle_content(LifecycleVisual visual) {
     lv_label_set_text(ui.nav_lifecycle_kicker, kicker);
     lv_label_set_text(ui.nav_lifecycle_title, title);
     lv_label_set_text(ui.nav_lifecycle_subtitle, subtitle);
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    const bool arcade_lifecycle = visual == LifecycleVisual::Ready || visual == LifecycleVisual::PhoneConnecting;
+    lv_obj_set_style_text_font(ui.nav_lifecycle_kicker, arcade_lifecycle ? RIDER_PIXEL_16 : &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(ui.nav_lifecycle_title, arcade_lifecycle ? RIDER_PIXEL_24 : &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_color(ui.nav_lifecycle_kicker, arcade_lifecycle ? kIce : kQuiet, 0);
+#endif
     lv_obj_set_style_text_color(ui.nav_lifecycle_title, title_color, 0);
     lv_obj_set_style_text_color(ui.nav_lifecycle_subtitle,
                                 visual == LifecycleVisual::Connected
@@ -1480,7 +1641,43 @@ void update_compass(const moto_ui_state_t *state) {
 }
 
 void update_music_view() {
-    lv_label_set_text(ui.music_source, ui.music.connected ? ui.music_source_text : "PHONE NOT CONNECTED");
+    const char *source = ui.music.connected ? ui.music_source_text : "PHONE NOT CONNECTED";
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    if(std::strcmp(ui.music_source_rendered, source) != 0) {
+        std::snprintf(ui.music_source_rendered, sizeof(ui.music_source_rendered), "%s", source);
+        // Split at UTF-8 character boundaries so Chinese source names remain intact.
+        const char *characters[24]{};
+        std::size_t lengths[24]{};
+        int count = 0;
+        for(const char *p = source; *p && count < 24;) {
+            characters[count] = p++;
+            while((*p & 0xC0) == 0x80) ++p;
+            lengths[count] = static_cast<std::size_t>(p - characters[count]);
+            ++count;
+        }
+        const double step = count > 1 ? std::min(0.11, 1.30 / (count - 1)) : 0.0;
+        for(int i = 0; i < 24; ++i) {
+            lv_obj_t *glyph = ui.music_source_glyphs[i];
+            if(i >= count) {
+                lv_obj_add_flag(glyph, LV_OBJ_FLAG_HIDDEN);
+                continue;
+            }
+            char text[8]{};
+            const std::size_t n = std::min(lengths[i], sizeof(text) - 1);
+            std::memcpy(text, characters[i], n);
+            lv_label_set_text(glyph, text);
+            lv_obj_remove_flag(glyph, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_update_layout(glyph);
+            const double angle = (i - (count - 1) / 2.0) * step;
+            const int x = static_cast<int>(px(180.0 + 140.0 * std::sin(angle)));
+            const int y = static_cast<int>(px(180.0 - 140.0 * std::cos(angle)));
+            const int w = lv_obj_get_width(glyph), h = lv_obj_get_height(glyph);
+            lv_obj_set_pos(glyph, x - w / 2, y - h / 2);
+        }
+    }
+#else
+    lv_label_set_text(ui.music_source, source);
+#endif
     lv_label_set_text(ui.music_title, ui.music_title_text);
     lv_label_set_text(ui.music_artist, ui.music_artist_text);
     lv_label_set_text(ui.music_button_labels[1], ui.music.playing ? "II" : ">");
@@ -1494,10 +1691,18 @@ void update_music_view() {
                                   ui.music.playing ? kIce : kGraphite, 0);
 }
 
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+std::uint32_t current_music_position_ms();
+#endif
+
 void music_button_event(lv_event_t *event) {
     const auto command = static_cast<moto_music_command_t>(
         reinterpret_cast<std::intptr_t>(lv_event_get_user_data(event)));
     if(command == MOTO_MUSIC_TOGGLE_PLAYBACK) {
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+        ui.music_progress_base_ms = current_music_position_ms();
+        ui.music_progress_updated_ms = lv_tick_get();
+#endif
         ui.music.playing = ui.music.playing == 0;
     } else if(command == MOTO_MUSIC_LIKE && ui.music.like_available) {
         ui.music.liked = 1;
@@ -1505,6 +1710,58 @@ void music_button_event(lv_event_t *event) {
     update_music_view();
     if(ui.music_callback != nullptr) ui.music_callback(command, ui.music_callback_context);
 }
+
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+std::uint32_t current_music_position_ms() {
+    return ui.music_progress_base_ms +
+        (ui.music.connected && ui.music.playing ?
+            lv_tick_elaps(ui.music_progress_updated_ms) : 0U);
+}
+
+void music_progress_tick(lv_timer_t *) {
+    if(ui.music_progress == nullptr || ui.page != MOTO_UI_PAGE_MUSIC) return;
+    const std::uint32_t duration_ms = static_cast<std::uint32_t>(ui.music.duration_s) * 1000U;
+    const std::uint32_t position_ms = current_music_position_ms();
+    const int value = duration_ms && ui.music.connected
+        ? static_cast<int>(std::min<std::uint64_t>(1000U,
+              static_cast<std::uint64_t>(position_ms) * 1000U / duration_ms)) : 0;
+    lv_arc_set_value(ui.music_progress, value);
+}
+
+void volume_slide_event(lv_event_t *event) {
+    const auto code = lv_event_get_code(event);
+    if(code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+        ui.volume_dragging = false;
+        return;
+    }
+    lv_indev_t *indev = lv_indev_active();
+    if(indev == nullptr) return;
+    lv_point_t point{};
+    lv_indev_get_point(indev, &point);
+    if(code == LV_EVENT_PRESSED) {
+        ui.volume_dragging = ui.volume_available && ui.volume_callback != nullptr;
+        ui.volume_drag_cancelled = false;
+        ui.volume_start_x = point.x;
+        ui.volume_start_y = point.y;
+        ui.volume_last_y = point.y;
+        ui.volume_last_command_ms = lv_tick_get() - 150U;
+        return;
+    }
+    if(code != LV_EVENT_PRESSING || !ui.volume_dragging || ui.volume_drag_cancelled) return;
+    const int dx = std::abs(point.x - ui.volume_start_x);
+    const int dy = std::abs(point.y - ui.volume_start_y);
+    if(dx >= px(16) && dx > dy) {
+        ui.volume_drag_cancelled = true;
+        return;
+    }
+    const int delta = point.y - ui.volume_last_y;
+    if(dy < px(16) || std::abs(delta) < px(12) ||
+       lv_tick_elaps(ui.volume_last_command_ms) < 150U) return;
+    ui.volume_callback(delta < 0 ? 1 : -1, ui.volume_callback_context);
+    ui.volume_last_y += delta < 0 ? -px(12) : px(12);
+    ui.volume_last_command_ms = lv_tick_get();
+}
+#endif
 
 void create_page_dots() {
     for(int i = 0; i < MOTO_UI_PAGE_COUNT; ++i) {
@@ -1600,8 +1857,8 @@ void create_navigation_page() {
     lv_obj_add_event_cb(ui.nav_maneuver, draw_maneuver_icon,
                         LV_EVENT_DRAW_MAIN_END, nullptr);
 
-    ui.nav_distance = make_label(page, &lv_font_montserrat_48, kWhite, "300");
-    ui.nav_unit = make_label(page, &lv_font_montserrat_20, kQuiet, "m");
+    ui.nav_distance = make_label(page, RIDER_PIXEL_48, kWhite, "300");
+    ui.nav_unit = make_label(page, RIDER_PIXEL_24, kQuiet, "m");
 
     ui.nav_limit = lv_obj_create(page);
     lv_obj_set_size(ui.nav_limit, px(61), px(61));
@@ -1622,7 +1879,11 @@ void create_navigation_page() {
     ui.nav_progress = lv_arc_create(page);
     lv_obj_set_size(ui.nav_progress, px(316), px(316));
     lv_obj_center(ui.nav_progress);
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    lv_arc_set_rotation(ui.nav_progress, 228);
+#else
     lv_arc_set_rotation(ui.nav_progress, 48);
+#endif
     lv_arc_set_bg_angles(ui.nav_progress, 0, 84);
     lv_arc_set_range(ui.nav_progress, 0, 100);
     lv_arc_set_value(ui.nav_progress, 24);
@@ -1683,7 +1944,7 @@ void create_navigation_page() {
 
 void create_speed_page() {
     lv_obj_t *page = ui.pages[MOTO_UI_PAGE_SPEED];
-    lv_obj_t *title = make_label(page, &lv_font_montserrat_16, kQuiet, "SPEED");
+    lv_obj_t *title = make_label(page, RIDER_PIXEL_16, kAmber, "SPEED");
     lv_obj_set_style_text_letter_space(title, px(4), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, px(48));
 
@@ -1718,12 +1979,12 @@ void create_speed_page() {
         lv_obj_set_style_line_width(ui.speed_ticks[i], px(i % 2 == 0 ? 3 : 2), 0);
         lv_obj_set_style_line_color(ui.speed_ticks[i], kGraphite, 0);
     }
-    ui.speed_value = make_label(page, &lv_font_montserrat_48, kWhite, "72");
+    ui.speed_value = make_label(page, RIDER_PIXEL_48, kWhite, "72");
     lv_obj_align(ui.speed_value, LV_ALIGN_CENTER, 0, px(-10));
-    lv_obj_t *unit = make_label(page, &lv_font_montserrat_20, kQuiet, "km/h");
+    lv_obj_t *unit = make_label(page, RIDER_PIXEL_24, kQuiet, "km/h");
     lv_obj_set_style_text_letter_space(unit, px(2), 0);
     lv_obj_align(unit, LV_ALIGN_CENTER, 0, px(45));
-    lv_obj_t *caption = make_label(page, &lv_font_montserrat_16, kQuiet, "LIVE SPEED");
+    lv_obj_t *caption = make_label(page, RIDER_PIXEL_16, kQuiet, "LIVE SPEED");
     lv_obj_set_style_text_letter_space(caption, px(2), 0);
     lv_obj_align(caption, LV_ALIGN_BOTTOM_MID, 0, px(-49));
 }
@@ -1738,7 +1999,7 @@ void create_compass_page() {
         lv_obj_set_style_line_color(ui.compass_ticks[i], kQuiet, 0);
     }
     for(int i = 0; i < 4; ++i) {
-        ui.compass_letters[i] = make_label(page, &lv_font_montserrat_16, kQuiet, "N");
+        ui.compass_letters[i] = make_label(page, RIDER_PIXEL_16, kQuiet, "N");
         lv_obj_set_size(ui.compass_letters[i], px(28), px(22));
         lv_obj_set_style_text_align(ui.compass_letters[i], LV_TEXT_ALIGN_CENTER, 0);
     }
@@ -1750,23 +2011,149 @@ void create_compass_page() {
     lv_obj_set_style_bg_opa(index, LV_OPA_COVER, 0);
     lv_obj_set_style_transform_rotation(index, 450, 0);
 
-    ui.compass_heading = make_label(page, &lv_font_montserrat_48, kAmber, "359°");
+    ui.compass_heading = make_label(page, RIDER_PIXEL_48, kAmber, "359°");
     lv_obj_align(ui.compass_heading, LV_ALIGN_CENTER, 0, px(-37));
-    ui.compass_cardinal = make_label(page, &lv_font_montserrat_20, kAmber, "N");
+    ui.compass_cardinal = make_label(page, RIDER_PIXEL_24, kAmber, "N");
     lv_obj_align(ui.compass_cardinal, LV_ALIGN_CENTER, 0, px(10));
-    ui.compass_speed = make_label(page, &lv_font_montserrat_20, kWhite, "72 km/h");
+    ui.compass_speed = make_label(page, RIDER_PIXEL_24, kWhite, "72 km/h");
     lv_obj_set_style_text_letter_space(ui.compass_speed, px(1), 0);
     lv_obj_align(ui.compass_speed, LV_ALIGN_CENTER, 0, px(57));
 }
 
+void style_music_button(lv_obj_t *button, bool primary) {
+    const lv_color_t color = primary ? kWhite : kGraphite;
+    lv_obj_set_style_radius(button, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(button, color, 0);
+    lv_obj_set_style_bg_opa(button, LV_OPA_COVER, 0);
+    lv_obj_set_style_shadow_width(button, 0, 0);
+    lv_obj_set_style_border_width(button, 0, 0);
+    // Keep pressed buttons circular without the default theme's recolor/grow.
+    lv_obj_set_style_bg_color(button, color, LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_radius(button, LV_RADIUS_CIRCLE, LV_STATE_PRESSED);
+    lv_obj_set_style_shadow_width(button, 0, LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(button, 0, LV_STATE_PRESSED);
+    lv_obj_set_style_recolor_opa(button, LV_OPA_TRANSP, LV_STATE_PRESSED);
+    lv_obj_set_style_transform_width(button, 0, LV_STATE_PRESSED);
+    lv_obj_set_style_transform_height(button, 0, LV_STATE_PRESSED);
+    lv_obj_add_flag(button, LV_OBJ_FLAG_GESTURE_BUBBLE);
+}
+
+void shortcut_button_event(lv_event_t *event) {
+    const auto slot = static_cast<uint8_t>(
+        reinterpret_cast<std::intptr_t>(lv_event_get_user_data(event)));
+    if(ui.shortcut_callback != nullptr)
+        ui.shortcut_callback(slot, ui.shortcut_callback_context);
+}
+
+void preset_button_event(lv_event_t *event) {
+    if(ui.preset_callback) ui.preset_callback(
+        static_cast<uint8_t>(reinterpret_cast<intptr_t>(lv_event_get_user_data(event))),ui.preset_context);
+}
+void create_presets_page() {
+    auto *page=ui.pages[MOTO_UI_PAGE_PRESETS];
+    auto *title=make_label(page,RIDER_PIXEL_24,kIce,"TF ROUTES");
+    lv_obj_align(title,LV_ALIGN_TOP_MID,0,px(49));
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    static lv_font_t font=moto_music_font_16_a; font.fallback=&moto_music_font_16_b;
+    const lv_font_t *text_font=&font;
+#else
+    const lv_font_t *text_font=RIDER_PIXEL_16;
+#endif
+    for(int i=0;i<4;++i) {
+        auto *b=lv_button_create(page);ui.preset_buttons[i]=b;
+        lv_obj_set_size(b,px(224),px(39));lv_obj_set_pos(b,px(68),px(91+i*44));
+        lv_obj_set_style_bg_color(b,kGraphite,0);
+        lv_obj_add_event_cb(b,preset_button_event,LV_EVENT_CLICKED,reinterpret_cast<void*>(intptr_t(i+1)));
+        ui.preset_labels[i]=make_label(b,text_font,kWhite,"EMPTY");
+        lv_obj_set_width(ui.preset_labels[i],px(204));
+        lv_label_set_long_mode(ui.preset_labels[i],LV_LABEL_LONG_MODE_SCROLL_CIRCULAR);
+        lv_obj_center(ui.preset_labels[i]);lv_obj_add_state(b,LV_STATE_DISABLED);
+    }
+    ui.preset_status=make_label(page,RIDER_PIXEL_16,kAmber,"CHECKING TF");
+    lv_obj_set_width(ui.preset_status,px(230));
+    lv_obj_set_style_text_align(ui.preset_status,LV_TEXT_ALIGN_CENTER,0);
+    lv_obj_align(ui.preset_status,LV_ALIGN_TOP_MID,0,px(278));
+}
+
+void create_shortcuts_page() {
+    lv_obj_t *page = ui.pages[MOTO_UI_PAGE_SHORTCUTS];
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    static lv_font_t shortcut_font = moto_music_font_16_a;
+    shortcut_font.fallback = &moto_music_font_16_b;
+    const lv_font_t *text_font = &shortcut_font;
+#else
+    const lv_font_t *text_font = &moto_font_nav_16;
+#endif
+    lv_obj_t *title = make_label(page, text_font, kWhite, "快捷按键");
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, px(76));
+    lv_obj_t *hint = make_label(page, text_font, kQuiet, "连接手机后点击运行");
+    lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, px(111));
+    static const char *labels[] = {LV_SYMBOL_PLAY, LV_SYMBOL_HOME, LV_SYMBOL_GPS};
+    for(int i = 0; i < 3; ++i) {
+        lv_obj_t *button = lv_button_create(page);
+        lv_obj_set_size(button, px(64), px(64));
+        lv_obj_set_pos(button, px(63 + i * 85), px(165));
+        style_music_button(button, false);
+        lv_obj_add_event_cb(button, shortcut_button_event, LV_EVENT_CLICKED,
+                            reinterpret_cast<void *>(static_cast<std::intptr_t>(i + 1)));
+        lv_obj_t *label = make_label(button, &lv_font_montserrat_20, kWhite, labels[i]);
+        lv_obj_center(label);
+    }
+}
+
 void create_music_page() {
     lv_obj_t *page = ui.pages[MOTO_UI_PAGE_MUSIC];
-    ui.music_source = make_label(page, &lv_font_montserrat_16, kQuiet, "APPLE MUSIC");
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    // The outer ring is a read-only indication of track progress. The slider
+    // sits farther in, leaving the green ring visible around the whole screen.
+    ui.music_progress = lv_arc_create(page);
+    lv_obj_set_size(ui.music_progress, px(348), px(348));
+    lv_obj_center(ui.music_progress);
+    lv_arc_set_rotation(ui.music_progress, 270);
+    lv_arc_set_bg_angles(ui.music_progress, 0, 360);
+    lv_arc_set_range(ui.music_progress, 0, 1000);
+    lv_arc_set_value(ui.music_progress, 0);
+    lv_obj_remove_style(ui.music_progress, nullptr, LV_PART_KNOB);
+    lv_obj_remove_flag(ui.music_progress, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_arc_width(ui.music_progress, px(3), LV_PART_MAIN);
+    lv_obj_set_style_arc_color(ui.music_progress, kGraphite, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(ui.music_progress, px(4), LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(ui.music_progress, kArcadePink, LV_PART_INDICATOR);
+    ui.music_progress_timer = lv_timer_create(music_progress_tick, 200, nullptr);
+
+    // Use a compact pixel font for Latin text and retain CJK fallbacks.
+    // Copies are necessary because the generated font descriptors are const.
+    static lv_font_t cjk_font = moto_music_font_16_a;
+    static lv_font_t title_font = moto_pixel_16;
+    static lv_font_t artist_font = moto_pixel_16;
+    cjk_font.fallback = &moto_music_font_16_b;
+    title_font.fallback = &cjk_font;
+    artist_font.fallback = &cjk_font;
+    const lv_font_t *music_title_font = &title_font;
+    const lv_font_t *music_artist_font = &artist_font;
+#else
+    const lv_font_t *music_title_font = &lv_font_montserrat_20;
+    const lv_font_t *music_artist_font = &lv_font_montserrat_16;
+#endif
+    ui.music_source = make_label(page, music_artist_font, kQuiet, "APPLE MUSIC");
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    lv_obj_add_flag(ui.music_source, LV_OBJ_FLAG_HIDDEN);
+    for(auto &glyph : ui.music_source_glyphs) {
+        glyph = make_label(page, music_artist_font, kQuiet, "");
+        lv_obj_add_flag(glyph, LV_OBJ_FLAG_HIDDEN);
+    }
+#else
     lv_obj_set_style_text_letter_space(ui.music_source, px(2), 0);
     lv_obj_align(ui.music_source, LV_ALIGN_TOP_MID, 0, px(37));
+#endif
 
     ui.music_disc = lv_obj_create(page);
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    lv_obj_set_size(ui.music_disc, px(96), px(96));
+#else
     lv_obj_set_size(ui.music_disc, px(104), px(104));
+#endif
     lv_obj_align(ui.music_disc, LV_ALIGN_TOP_MID, 0, px(71));
     lv_obj_set_style_radius(ui.music_disc, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(ui.music_disc, kGraphite, 0);
@@ -1782,16 +2169,42 @@ void create_music_page() {
     lv_obj_set_style_bg_opa(core, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(core, 0, 0);
 
-    ui.music_title = make_label(page, &lv_font_montserrat_20, kWhite, "NIGHT RIDE");
+    ui.music_title = make_label(page, music_title_font, kWhite, "NIGHT RIDE");
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    lv_obj_set_width(ui.music_title, px(240));
+#else
     lv_obj_set_width(ui.music_title, px(260));
+#endif
     lv_obj_set_style_text_align(ui.music_title, LV_TEXT_ALIGN_CENTER, 0);
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    lv_obj_set_height(ui.music_title, px(20));
+    lv_label_set_long_mode(ui.music_title, LV_LABEL_LONG_SCROLL_CIRCULAR);
+#else
     lv_label_set_long_mode(ui.music_title, LV_LABEL_LONG_DOT);
+#endif
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    lv_obj_align(ui.music_title, LV_ALIGN_TOP_MID, 0, px(183));
+#else
     lv_obj_align(ui.music_title, LV_ALIGN_TOP_MID, 0, px(190));
-    ui.music_artist = make_label(page, &lv_font_montserrat_16, kQuiet, "PHONE NOW PLAYING");
+#endif
+    ui.music_artist = make_label(page, music_artist_font, kQuiet, "PHONE NOW PLAYING");
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    lv_obj_set_width(ui.music_artist, px(240));
+#else
     lv_obj_set_width(ui.music_artist, px(260));
+#endif
     lv_obj_set_style_text_align(ui.music_artist, LV_TEXT_ALIGN_CENTER, 0);
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    lv_obj_set_height(ui.music_artist, px(18));
+    lv_label_set_long_mode(ui.music_artist, LV_LABEL_LONG_SCROLL_CIRCULAR);
+#else
     lv_label_set_long_mode(ui.music_artist, LV_LABEL_LONG_DOT);
+#endif
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    lv_obj_align(ui.music_artist, LV_ALIGN_TOP_MID, 0, px(207));
+#else
     lv_obj_align(ui.music_artist, LV_ALIGN_TOP_MID, 0, px(216));
+#endif
 
     static const char *labels[4] = {"<<", ">", ">>", "LIKE"};
     static const int positions[4][3] = {
@@ -1803,31 +2216,7 @@ void create_music_page() {
                         px(i == 3 ? 28 : positions[i][2]));
         lv_obj_set_pos(ui.music_buttons[i], px(positions[i][0]),
                        px(positions[i][1]));
-        lv_obj_set_style_radius(ui.music_buttons[i], LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_bg_color(ui.music_buttons[i], i == 1 ? kWhite : kGraphite, 0);
-        lv_obj_set_style_bg_opa(ui.music_buttons[i], LV_OPA_COVER, 0);
-        lv_obj_set_style_shadow_width(ui.music_buttons[i], 0, 0);
-        lv_obj_set_style_border_width(ui.music_buttons[i], 0, 0);
-        // Pin the pressed appearance to the idle appearance. The LVGL default
-        // theme darkens and grows pressed buttons (recolor 35% + 3 px grow);
-        // on the ESP32 PPA render path that pre-composited recolor painted as
-        // a hard-edged yellow-green block over the round button. Identical
-        // pressed styles remove the visual state difference by construction.
-        lv_obj_set_style_bg_color(ui.music_buttons[i], i == 1 ? kWhite : kGraphite,
-                                  LV_STATE_PRESSED);
-        lv_obj_set_style_bg_opa(ui.music_buttons[i], LV_OPA_COVER,
-                                LV_STATE_PRESSED);
-        lv_obj_set_style_radius(ui.music_buttons[i], LV_RADIUS_CIRCLE,
-                                LV_STATE_PRESSED);
-        lv_obj_set_style_shadow_width(ui.music_buttons[i], 0, LV_STATE_PRESSED);
-        lv_obj_set_style_border_width(ui.music_buttons[i], 0, LV_STATE_PRESSED);
-        lv_obj_set_style_recolor_opa(ui.music_buttons[i], LV_OPA_TRANSP,
-                                     LV_STATE_PRESSED);
-        lv_obj_set_style_transform_width(ui.music_buttons[i], 0,
-                                         LV_STATE_PRESSED);
-        lv_obj_set_style_transform_height(ui.music_buttons[i], 0,
-                                          LV_STATE_PRESSED);
-        lv_obj_add_flag(ui.music_buttons[i], LV_OBJ_FLAG_GESTURE_BUBBLE);
+        style_music_button(ui.music_buttons[i], i == 1);
         lv_obj_add_event_cb(
             ui.music_buttons[i], music_button_event, LV_EVENT_CLICKED,
             reinterpret_cast<void *>(static_cast<std::intptr_t>(i)));
@@ -1836,6 +2225,37 @@ void create_music_page() {
             i == 1 ? kBlack : kWhite, labels[i]);
         lv_obj_center(ui.music_button_labels[i]);
     }
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    ui.volume_arc = lv_arc_create(page);
+    lv_obj_set_size(ui.volume_arc, px(318), px(318));
+    lv_obj_center(ui.volume_arc);
+    // On the left, clockwise runs from the lower end to the upper end.
+    lv_arc_set_rotation(ui.volume_arc, 140);
+    lv_arc_set_bg_angles(ui.volume_arc, 0, 80);
+    lv_arc_set_mode(ui.volume_arc, LV_ARC_MODE_NORMAL);
+    lv_arc_set_range(ui.volume_arc, 0, 100);
+    lv_arc_set_value(ui.volume_arc, 0);
+    lv_obj_remove_flag(ui.volume_arc, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_arc_width(ui.volume_arc, px(7), LV_PART_MAIN);
+    lv_obj_set_style_arc_color(ui.volume_arc, kGraphite, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(ui.volume_arc, px(7), LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(ui.volume_arc, kIce, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(ui.volume_arc, kWhite, LV_PART_KNOB);
+    lv_obj_set_style_bg_opa(ui.volume_arc, LV_OPA_TRANSP, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(ui.volume_arc, px(4), LV_PART_KNOB);
+    lv_obj_set_style_shadow_width(ui.volume_arc, 0, LV_PART_KNOB);
+
+    // A generous invisible hit area permits a relative drag without jumping
+    // on touch. The passive progress ring is never interactive.
+    lv_obj_t *volume_hit = lv_obj_create(page);
+    lv_obj_remove_style_all(volume_hit);
+    lv_obj_set_pos(volume_hit, 0, px(75));
+    lv_obj_set_size(volume_hit, px(69), px(210));
+    lv_obj_add_flag(volume_hit, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(volume_hit, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(volume_hit, LV_OBJ_FLAG_GESTURE_BUBBLE);
+    lv_obj_add_event_cb(volume_hit, volume_slide_event, LV_EVENT_ALL, nullptr);
+#endif
 }
 
 void set_boot_content_opacity(void *object, int32_t opacity) {
@@ -1864,6 +2284,13 @@ extern "C" void moto_nav_ui_show_boot_screen(void) {
         lv_timer_delete(ui.nav_success_timer);
         ui.nav_success_timer = nullptr;
     }
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    if(ui.music_progress_timer != nullptr) {
+        lv_timer_delete(ui.music_progress_timer);
+        ui.music_progress_timer = nullptr;
+    }
+#endif
+    clock_destroy();
     reset_ui_state();
     ui.screen = lv_screen_active();
     lv_obj_clean(ui.screen);
@@ -1925,6 +2352,7 @@ extern "C" void moto_nav_ui_show_boot_screen(void) {
 }
 
 extern "C" void moto_nav_ui_show_power_off_screen(void) {
+    clock_destroy();
     if(ui.screen == nullptr) return;
     if(ui.page_dots_timer != nullptr) {
         lv_timer_delete(ui.page_dots_timer);
@@ -1943,6 +2371,12 @@ extern "C" void moto_nav_ui_show_power_off_screen(void) {
         ui.nav_success_timer = nullptr;
     }
 
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    if(ui.music_progress_timer != nullptr) {
+        lv_timer_delete(ui.music_progress_timer);
+        ui.music_progress_timer = nullptr;
+    }
+#endif
     lv_obj_clean(ui.screen);
     lv_obj_set_style_bg_color(ui.screen, LV_COLOR_MAKE(0x00, 0x00, 0x00), 0);
     lv_obj_set_style_bg_opa(ui.screen, LV_OPA_COVER, 0);
@@ -1964,6 +2398,7 @@ extern "C" void moto_nav_ui_show_power_off_screen(void) {
 }
 
 extern "C" void moto_nav_ui_create(void) {
+    clock_destroy();
     reset_ui_state();
     ui.screen = lv_screen_active();
     lv_obj_clean(ui.screen);
@@ -1979,7 +2414,14 @@ extern "C" void moto_nav_ui_create(void) {
     create_speed_page();
     create_compass_page();
     create_music_page();
+    create_shortcuts_page();
+    create_presets_page();
     create_page_dots();
+    clock_label = make_label(ui.screen, RIDER_PIXEL_16, kIce, "--:--");
+    lv_obj_align(clock_label, LV_ALIGN_TOP_MID, 0, px(20));
+    lv_obj_remove_flag(clock_label, LV_OBJ_FLAG_CLICKABLE);
+    clock_update(nullptr);
+    clock_timer = lv_timer_create(clock_update, 1000, nullptr);
     // Press events are delivered to the topmost object under the finger, not
     // necessarily to its page. Register once across the finished tree so any
     // touch reliably wakes the dots, including the map and music controls.
@@ -2010,6 +2452,8 @@ extern "C" void moto_nav_ui_set_state(const moto_ui_state_t *state) {
         case MOTO_UI_PAGE_SPEED: update_speedometer(state); break;
         case MOTO_UI_PAGE_COMPASS: update_compass(state); break;
         case MOTO_UI_PAGE_MUSIC:
+        case MOTO_UI_PAGE_SHORTCUTS:
+        case MOTO_UI_PAGE_PRESETS:
         case MOTO_UI_PAGE_COUNT: break;
     }
 }
@@ -2084,6 +2528,10 @@ extern "C" void moto_nav_ui_set_page_change_callback(
 
 extern "C" void moto_nav_ui_set_music_state(const moto_music_state_t *state) {
     if(state == nullptr || ui.screen == nullptr) return;
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    ui.music_progress_base_ms = static_cast<std::uint32_t>(state->position_s) * 1000U;
+    ui.music_progress_updated_ms = lv_tick_get();
+#endif
     ui.music = *state;
     copy_text(ui.music_source_text, sizeof(ui.music_source_text),
               state->source_name, "PHONE MEDIA");
@@ -2095,6 +2543,9 @@ extern "C" void moto_nav_ui_set_music_state(const moto_music_state_t *state) {
     ui.music.track_title = ui.music_title_text;
     ui.music.artist_name = ui.music_artist_text;
     update_music_view();
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    music_progress_tick(nullptr);
+#endif
 }
 
 extern "C" void moto_nav_ui_set_music_page_enabled(uint8_t enabled) {
@@ -2106,11 +2557,45 @@ extern "C" void moto_nav_ui_set_music_page_enabled(uint8_t enabled) {
     update_page_dots();
 }
 
+extern "C" void moto_nav_ui_set_shortcuts_page_enabled(uint8_t enabled) {
+    if(ui.screen == nullptr) return;
+    ui.shortcuts_page_enabled = enabled != 0;
+    if(!ui.shortcuts_page_enabled && ui.page == MOTO_UI_PAGE_SHORTCUTS)
+        show_page(MOTO_UI_PAGE_NAVIGATION, true);
+    update_page_dots();
+}
+
+extern "C" void moto_nav_ui_set_shortcut_callback(
+    moto_shortcut_callback_t callback, void *context) {
+    ui.shortcut_callback = callback;
+    ui.shortcut_callback_context = context;
+}
+
 extern "C" void moto_nav_ui_set_music_command_callback(
     moto_music_command_callback_t callback, void *context) {
     ui.music_callback = callback;
     ui.music_callback_context = context;
 }
+
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+extern "C" void moto_nav_ui_set_volume_change_callback(
+    moto_volume_change_callback_t callback, void *context) {
+    ui.volume_callback = callback;
+    ui.volume_callback_context = context;
+}
+
+extern "C" void moto_nav_ui_set_music_volume(uint8_t available, int16_t percent) {
+    if(ui.screen == nullptr) return;
+    ui.volume_available = available != 0;
+    if(!ui.volume_available) ui.volume_dragging = false;
+    const bool known = ui.volume_available && percent >= 0 && percent <= 100;
+    lv_obj_set_style_arc_opa(ui.volume_arc, known ? LV_OPA_COVER : LV_OPA_TRANSP,
+                            LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(ui.volume_arc, known ? LV_OPA_COVER : LV_OPA_TRANSP,
+                            LV_PART_KNOB);
+    lv_arc_set_value(ui.volume_arc, known ? percent : 0);
+}
+#endif
 
 extern "C" void moto_nav_ui_set_demo_active(uint8_t enabled) {
     ui.demo_active = enabled != 0;
@@ -2121,4 +2606,24 @@ extern "C" void moto_nav_ui_set_demo_change_callback(
     moto_demo_change_callback_t callback, void *context) {
     ui.demo_callback = callback;
     ui.demo_callback_context = context;
+}
+
+extern "C" void moto_nav_ui_sync_clock(uint32_t local_seconds) {
+    clock_seconds = local_seconds % 86400;
+    clock_tick = lv_tick_get();
+    clock_synced = true;
+    clock_update(nullptr);
+}
+
+extern "C" void moto_nav_ui_set_preset_callback(moto_preset_callback_t cb,void *context) {
+    ui.preset_callback=cb;ui.preset_context=context;
+}
+extern "C" void moto_nav_ui_set_presets(const char *const names[4],const uint32_t tokens[4],const char *status) {
+    if(!ui.preset_status) return;
+    for(int i=0;i<4;++i) {
+        lv_label_set_text(ui.preset_labels[i],tokens[i]?names[i]:"EMPTY");
+        if(tokens[i])lv_obj_remove_state(ui.preset_buttons[i],LV_STATE_DISABLED);
+        else lv_obj_add_state(ui.preset_buttons[i],LV_STATE_DISABLED);
+    }
+    lv_label_set_text(ui.preset_status,status);
 }

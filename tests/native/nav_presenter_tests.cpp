@@ -81,11 +81,12 @@ void test_display_pages_map_without_changing_navigation_mode() {
     DisplayPage input;
     moto_ui_page_t expected;
   };
-  constexpr std::array<PageCase, 4> cases{{
+  constexpr std::array<PageCase, 5> cases{{
       {DisplayPage::Navigation, MOTO_UI_PAGE_NAVIGATION},
       {DisplayPage::Speed, MOTO_UI_PAGE_SPEED},
       {DisplayPage::Compass, MOTO_UI_PAGE_COMPASS},
       {DisplayPage::Music, MOTO_UI_PAGE_MUSIC},
+      {DisplayPage::Shortcuts, MOTO_UI_PAGE_SHORTCUTS},
   }};
   NavPresenter presenter;
   NavSnapshot snapshot;

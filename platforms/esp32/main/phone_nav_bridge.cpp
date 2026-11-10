@@ -215,6 +215,8 @@ moto::nav::DisplayPage map_page(moto::ble::DisplayPage page) {
     case In::Speed: return Out::Speed;
     case In::Compass: return Out::Compass;
     case In::Music: return Out::Music;
+    case In::Shortcuts: return Out::Shortcuts;
+    case In::Presets: return Out::Presets;
   }
   return Out::Navigation;
 }
@@ -224,6 +226,8 @@ moto::ble::DisplayPage map_page(moto_ui_page_t page) {
     case MOTO_UI_PAGE_SPEED: return moto::ble::DisplayPage::Speed;
     case MOTO_UI_PAGE_COMPASS: return moto::ble::DisplayPage::Compass;
     case MOTO_UI_PAGE_MUSIC: return moto::ble::DisplayPage::Music;
+    case MOTO_UI_PAGE_SHORTCUTS: return moto::ble::DisplayPage::Shortcuts;
+    case MOTO_UI_PAGE_PRESETS: return moto::ble::DisplayPage::Presets;
     case MOTO_UI_PAGE_NAVIGATION:
     case MOTO_UI_PAGE_COUNT:
     default: return moto::ble::DisplayPage::Navigation;
@@ -288,8 +292,16 @@ void PhoneNavBridge::set_sender(SendCallback callback,
 }
 
 void PhoneNavBridge::install_ui_callbacks() {
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+  preset_store_.start([](void* context) {
+    static_cast<PhoneNavBridge*>(context)->request_render(RenderNavigation);
+  },this);
+  moto_nav_ui_set_preset_callback(preset_selected,this);
+  request_render(RenderNavigation);
+#endif
   moto_nav_ui_set_page_change_callback(page_changed, this);
   moto_nav_ui_set_music_command_callback(music_command, this);
+  moto_nav_ui_set_shortcut_callback(shortcut_command, this);
   moto_nav_ui_set_demo_change_callback(demo_changed, this);
 }
 
@@ -344,6 +356,14 @@ void PhoneNavBridge::on_link_state(bool active) {
       heading_fusion_.reset();
       last_motion_present_ms_ = 0;
       music_page_enabled_ = false;
+      shortcuts_page_enabled_ = false;
+      if (phone_snapshot.display_page == moto::nav::DisplayPage::Shortcuts)
+        phone_snapshot.display_page = moto::nav::DisplayPage::Navigation;
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+      apple_media_active_ = false;
+      apple_volume_percent_ = -1;
+      phone_media_state_ = {};
+#endif
       media_state_ = {};
       media_state_.source_name = "iPhone";
       media_state_.track_title = "等待连接";
@@ -526,6 +546,13 @@ moto::ble::AckStatus PhoneNavBridge::on_message(
             const std::lock_guard<std::mutex> lock(state_mutex_);
             phone_session_id_ = value.session_id;
             music_page_enabled_ = media;
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+            // SmartRing firmware does not offer the shortcuts page.
+            shortcuts_page_enabled_ = false;
+#else
+            shortcuts_page_enabled_ = value.state == moto::ble::ConnectionState::Ready &&
+                (value.capabilities & moto::ble::CapabilityShortcuts) != 0U;
+#endif
             switch (value.state) {
               case moto::ble::ConnectionState::Ready:
                 ui_phone_connection_ = MOTO_UI_PHONE_ONLINE;
@@ -540,6 +567,21 @@ moto::ble::AckStatus PhoneNavBridge::on_message(
             }
           }
           present_navigation();
+        } else if constexpr (std::is_same_v<T, moto::ble::PresetRoute>) {
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+          const bool ok=preset_store_.consume(value);
+          request_render(RenderNavigation);
+          return ok?moto::ble::AckStatus::Ok:moto::ble::AckStatus::Failed;
+#else
+          return moto::ble::AckStatus::Unsupported;
+#endif
+        } else if constexpr (std::is_same_v<T, moto::ble::TimeSync>) {
+          const int64_t local = int64_t(value.unix_seconds) + int64_t(value.utc_offset_minutes) * 60;
+          {
+            const std::lock_guard<std::mutex> lock(state_mutex_);
+            pending_clock_seconds_ = static_cast<uint32_t>((local % 86400 + 86400) % 86400);
+          }
+          request_render(RenderClock);
         } else if constexpr (std::is_same_v<T, moto::ble::Heartbeat>) {
           std::uint32_t phone_session_id = 0;
           {
@@ -562,6 +604,15 @@ moto::ble::AckStatus PhoneNavBridge::on_message(
         } else if constexpr (std::is_same_v<T, moto::ble::MapScene>) {
           return consume_map_scene(value);
         } else if constexpr (std::is_same_v<T, moto::ble::Ack>) {
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+          { const std::lock_guard<std::mutex> lock(state_mutex_);
+            if(preset_command_id_ && value.command_id==preset_command_id_) {
+              preset_status_=(value.status==moto::ble::AckStatus::Ok || value.status==moto::ble::AckStatus::Duplicate)?"PHONE ACCEPTED":"OPEN PHONE / CHECK GPS";
+              preset_command_id_=0;
+            }
+          }
+          request_render(RenderNavigation);
+#endif
           ESP_LOGD(kTag, "phone ack sequence=%u command=%u status=%u",
                    value.acknowledged_sequence, value.command_id,
                    static_cast<unsigned>(value.status));
@@ -780,10 +831,27 @@ void PhoneNavBridge::consume_traffic(
 void PhoneNavBridge::consume_media(const moto::ble::MediaState& input) {
   {
     const std::lock_guard<std::mutex> lock(state_mutex_);
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    phone_media_state_ = input;
+    if (!apple_media_active_)
+#endif
     media_state_ = input;
   }
   request_render(RenderMedia);
 }
+
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+void PhoneNavBridge::on_apple_media(bool active, const moto::ble::MediaState& state,
+                                    int volume_percent) {
+  {
+    const std::lock_guard<std::mutex> lock(state_mutex_);
+    apple_media_active_ = active;
+    apple_volume_percent_ = active ? volume_percent : -1;
+    media_state_ = active ? state : phone_media_state_;
+  }
+  request_render(RenderMedia);
+}
+#endif
 
 moto::ble::AckStatus PhoneNavBridge::consume_map_scene(
     const moto::ble::MapScene& input) {
@@ -930,8 +998,21 @@ void PhoneNavBridge::render_pending() {
   const bool navigation = (requested & RenderNavigation) != 0U;
   const bool motion = !navigation && (requested & RenderMotion) != 0U;
   const bool media = (requested & RenderMedia) != 0U;
+  uint32_t clock_seconds = 0;
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+  const auto presets=preset_store_.entries();
+  const bool preset_ready=preset_store_.available();
+  std::string preset_status;
+#endif
   {
     const std::lock_guard<std::mutex> lock(state_mutex_);
+    clock_seconds = pending_clock_seconds_;
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    if(preset_command_id_ && monotonic_ms()>=preset_deadline_ms_) {
+      preset_command_id_=0;preset_status_="PHONE NO RESPONSE";
+    }
+    preset_status=!preset_ready?"TF UNAVAILABLE":preset_status_;
+#endif
     if (navigation || motion) {
       render_snapshot_ = snapshot_;
     }
@@ -939,9 +1020,14 @@ void PhoneNavBridge::render_pending() {
       render_phone_connection_ = ui_phone_connection_;
       render_demo_active_ = demo_active_;
       render_music_page_enabled_ = music_page_enabled_;
+      render_shortcuts_page_enabled_ = shortcuts_page_enabled_;
     }
     if (media) {
       render_media_state_ = media_state_;
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+      render_apple_media_active_ = apple_media_active_;
+      render_apple_volume_percent_ = apple_volume_percent_;
+#endif
     }
   }
 
@@ -964,11 +1050,19 @@ void PhoneNavBridge::render_pending() {
     request_render(requested);
     return;
   }
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+  const char *names[4];uint32_t tokens[4];
+  for(unsigned i=0;i<4;++i){names[i]=presets[i].name.c_str();tokens[i]=presets[i].token;}
+  moto_nav_ui_set_presets(names,tokens,preset_status.c_str());
+#endif
+  if ((requested & RenderClock) != 0U) moto_nav_ui_sync_clock(clock_seconds);
   if (navigation) {
     moto_nav_ui_set_phone_connection(render_phone_connection_);
     moto_nav_ui_set_demo_active(render_demo_active_ ? 1U : 0U);
     moto_nav_ui_set_music_page_enabled(
         render_music_page_enabled_ ? 1U : 0U);
+    moto_nav_ui_set_shortcuts_page_enabled(
+        render_shortcuts_page_enabled_ ? 1U : 0U);
     presenter_.apply_to_lvgl();
   } else if (motion) {
     moto_nav_ui_set_motion_state(&presenter_.ui_state());
@@ -986,7 +1080,15 @@ void PhoneNavBridge::render_pending() {
         (render_media_state_.flags & moto::ble::MediaLikeAvailable) != 0U;
     state.liked =
         (render_media_state_.flags & moto::ble::MediaLiked) != 0U;
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    state.position_s = render_media_state_.position_s;
+    state.duration_s = render_media_state_.duration_s;
+#endif
     moto_nav_ui_set_music_state(&state);
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+    moto_nav_ui_set_music_volume(render_apple_media_active_ ? 1U : 0U,
+                                 render_apple_volume_percent_);
+#endif
   }
   board_port_unlock();
 }
@@ -1017,6 +1119,19 @@ void PhoneNavBridge::page_changed(moto_ui_page_t page, void* context) {
 void PhoneNavBridge::music_command(moto_music_command_t command,
                                    void* context) {
   static_cast<PhoneNavBridge*>(context)->send_music_command(command);
+}
+
+void PhoneNavBridge::shortcut_command(uint8_t slot, void* context) {
+  auto* self = static_cast<PhoneNavBridge*>(context);
+  {
+    const std::lock_guard<std::mutex> lock(self->state_mutex_);
+    if (!self->shortcuts_page_enabled_ || slot < 1 || slot > 3) return;
+  }
+  moto::ble::DeviceCommand command;
+  command.kind = moto::ble::DeviceCommandKind::RunShortcut;
+  command.page = moto::ble::DisplayPage::Shortcuts;
+  command.x = slot;
+  self->send_device_command(command);
 }
 
 void PhoneNavBridge::demo_changed(uint8_t enabled, void* context) {
@@ -1073,3 +1188,22 @@ void PhoneNavBridge::send_device_command(moto::ble::DeviceCommand command) {
   sender(message, moto::ble::AckRequested | moto::ble::Urgent,
          sender_context);
 }
+
+#if defined(MOTO_BOARD_SMARTRING_PLUS)
+void PhoneNavBridge::preset_selected(uint8_t slot,void* context) {
+  auto* self=static_cast<PhoneNavBridge*>(context);
+  if(slot<1 || slot>4)return;
+  const auto entries=self->preset_store_.entries();const auto token=entries[slot-1].token;
+  if(!token)return;
+  {
+    const std::lock_guard<std::mutex> lock(self->state_mutex_);
+    if(!self->link_active_){self->preset_status_="CONNECT IPHONE";self->request_render(RenderNavigation);return;}
+    self->preset_command_id_=self->next_command_id_;
+    self->preset_deadline_ms_=monotonic_ms()+10000;
+    self->preset_status_="REQUESTING PHONE";
+  }
+  moto::ble::DeviceCommand c;c.kind=moto::ble::DeviceCommandKind::SelectPresetRoute;
+  c.page=moto::ble::DisplayPage::Presets;c.x=static_cast<uint16_t>(token);c.y=static_cast<uint16_t>(token>>16);
+  self->send_device_command(c);self->request_render(RenderNavigation);
+}
+#endif

@@ -112,6 +112,7 @@ enum class MessageType : std::uint8_t {
   Heartbeat = 0x02,
   Ack = 0x03,
   TimeSync = 0x04,
+  PresetRoute = 0x05,
   NavigationSnapshot = 0x10,
   RouteGeometry = 0x11,
   TrafficDeviation = 0x12,
@@ -275,6 +276,7 @@ enum Capability : std::uint32_t {
   CapabilityCommandAck = 1U << 6U,
   CapabilityMapScene = 1U << 7U,
   CapabilityShortcuts = 1U << 8U,
+  CapabilityPresetRoutes = 1U << 9U,
 };
 
 struct ConnectionStatus {
@@ -296,6 +298,15 @@ struct Heartbeat {
   std::uint16_t status_flags = 0;
 
   bool operator==(const Heartbeat& rhs) const noexcept;
+};
+
+// Bounded, stop-and-wait file transfer; slot 1..4, operations Begin/Data/Commit/Delete.
+struct PresetRoute {
+  std::uint8_t operation = 0, slot = 0;
+  std::uint32_t token = 0, total_size = 0, crc32 = 0, offset = 0;
+  std::string name;
+  Bytes data;
+  bool operator==(const PresetRoute& rhs) const noexcept;
 };
 
 struct TimeSync {
@@ -365,6 +376,7 @@ enum class DisplayPage : std::uint8_t {
   Compass = 2,
   Music = 3,
   Shortcuts = 4,
+  Presets = 5,
 };
 
 enum NavigationFlag : std::uint16_t {
@@ -547,6 +559,7 @@ enum class DeviceCommandKind : std::uint8_t {
   MusicNext = 18,
   MusicLike = 19,
   RunShortcut = 20,
+  SelectPresetRoute = 21,
 };
 
 constexpr std::uint16_t kUnknownTouchCoordinate = 0xFFFFU;
@@ -565,6 +578,7 @@ struct DeviceCommand {
 using Message = std::variant<ConnectionStatus,
                              Heartbeat,
                              TimeSync,
+                             PresetRoute,
                              Ack,
                              NavigationSnapshot,
                              RouteGeometry,
