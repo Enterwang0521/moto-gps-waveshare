@@ -10,6 +10,25 @@ static bool contains_title(lv_obj_t* object) {
     if(contains_title(lv_obj_get_child(object,i)))return true;
   return false;
 }
+static bool check_slot_fonts(lv_obj_t* object, int& count) {
+  if(lv_obj_check_type(object, &lv_label_class) &&
+     std::strcmp(lv_label_get_text(object), "EMPTY") == 0) {
+    ++count;
+    const auto* font = lv_obj_get_style_text_font(object, LV_PART_MAIN);
+    const uint32_t characters[] = {'E', 'M', 'P', 'T', 'Y', '1', '4', ' ', '-',
+                                   0x901a, 0x52e4, 0x5468, 0x672b, 0x8def, 0x7ebf};
+    for(auto character : characters) {
+      lv_font_glyph_dsc_t glyph{};
+      if(!lv_font_get_glyph_dsc(font, &glyph, character, 0) || glyph.is_placeholder) {
+        std::fprintf(stderr, "Route slot missing glyph U+%04X\n", unsigned(character));
+        return false;
+      }
+    }
+  }
+  for(uint32_t i=0; i<lv_obj_get_child_count(object); ++i)
+    if(!check_slot_fonts(lv_obj_get_child(object, i), count)) return false;
+  return true;
+}
 int main() {
   lv_init();
   static std::vector<uint32_t> pool(2*1024*1024/4);
@@ -27,6 +46,9 @@ int main() {
        !contains_title(lv_obj_get_child(lv_screen_active(),MOTO_UI_PAGE_PRESETS))) {
       std::fprintf(stderr,"TF ROUTES unavailable after UI reset, cycle=%d\n",cycle);return 1;
     }
+    int slot_count = 0;
+    if(!check_slot_fonts(lv_obj_get_child(lv_screen_active(), MOTO_UI_PAGE_PRESETS), slot_count) ||
+       slot_count != 4) return 1;
     moto_nav_ui_set_page(MOTO_UI_PAGE_NAVIGATION);
     moto_nav_ui_set_page(MOTO_UI_PAGE_PRESETS);
     if(moto_nav_ui_get_page()!=MOTO_UI_PAGE_PRESETS)return 1;

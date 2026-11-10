@@ -2055,8 +2055,13 @@ void create_presets_page() {
     auto *title=make_label(page,RIDER_PIXEL_24,kIce,"TF ROUTES");
     lv_obj_align(title,LV_ALIGN_TOP_MID,0,px(49));
 #if defined(MOTO_BOARD_SMARTRING_PLUS)
-    static lv_font_t font=moto_music_font_16_a; font.fallback=&moto_music_font_16_b;
-    const lv_font_t *text_font=&font;
+    // Start with ASCII pixel glyphs, then fall back through both CJK subsets.
+    // The CJK subsets deliberately exclude ASCII, including the EMPTY label.
+    static lv_font_t cjk_font = moto_music_font_16_a;
+    static lv_font_t slot_font = moto_pixel_16;
+    cjk_font.fallback = &moto_music_font_16_b;
+    slot_font.fallback = &cjk_font;
+    const lv_font_t *text_font = &slot_font;
 #else
     const lv_font_t *text_font=RIDER_PIXEL_16;
 #endif
