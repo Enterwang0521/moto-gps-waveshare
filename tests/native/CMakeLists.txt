@@ -148,6 +148,7 @@ target_compile_features(preset_route_store_tests PRIVATE cxx_std_17)
 target_compile_options(preset_route_store_tests PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-UNDEBUG>)
 add_test(NAME preset_route_store_tests COMMAND preset_route_store_tests)
 
+if(TARGET lvgl)
 # Compile the actual B UI, including board-only page availability, rather than
 # relying on the generic 466px UI tests to cover the 360px SmartRing variant.
 add_executable(smartring_presets_page_tests
@@ -165,3 +166,4 @@ target_compile_definitions(smartring_presets_page_tests PRIVATE
 target_link_libraries(smartring_presets_page_tests PRIVATE lvgl)
 target_compile_features(smartring_presets_page_tests PRIVATE cxx_std_17)
 add_test(NAME smartring_presets_page_tests COMMAND smartring_presets_page_tests)
+endif()
