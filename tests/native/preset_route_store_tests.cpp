@@ -63,9 +63,15 @@ int main() {
     assert(upload(s, start(400, vector), vector));
     assert(s.entries()[0].token == 400);
   }
+  // All generated filenames must work when ESP-IDF FATFS_LFN_NONE is enabled.
+  for (const auto &file : std::filesystem::directory_iterator(dir / "routes")) {
+    const auto path = file.path();
+    assert(path.stem().string().size() <= 8);
+    assert(path.extension().string().size() <= 4); // dot + three characters
+  }
   // Corruption of the newest generation falls back to the older valid copy.
   {
-    std::fstream f(dir / "routes/1b.route",
+    std::fstream f(dir / "routes/1b.rte",
                    std::ios::in | std::ios::out | std::ios::binary);
     f.seekp(-1, std::ios::end);
     f.put('x');
@@ -84,6 +90,14 @@ int main() {
     Store s((dir / "routes").string());
     assert(s.initialize());
     assert(s.entries()[0].token == 0);
+  }
+  // An older LFN-capable device's remaining copy can still be read.
+  std::filesystem::rename(dir / "routes/1a.rte", dir / "routes/1a.route");
+  std::filesystem::remove(dir / "routes/1b.rte");
+  {
+    Store s((dir / "routes").string());
+    assert(s.initialize());
+    assert(s.entries()[0].token == 100);
   }
   std::filesystem::remove_all(dir);
   std::cout << "Preset persistence, CRC, interrupted import and A/B recovery "

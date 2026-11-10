@@ -2,6 +2,7 @@
 #include "bsp/smartring_plus.h"
 #include "esp_log.h"
 #include "sdmmc_cmd.h"
+#include <cerrno>
 void PresetRouteService::start(void (*changed)(void *), void *context) {
   if (task_)
     return;
@@ -52,7 +53,20 @@ bool PresetRouteService::consume(const moto::ble::PresetRoute &packet) {
   auto *card = const_cast<sdmmc_card_t *>(bsp_sd_get_card());
   if (!card || sdmmc_get_status(card) != ESP_OK)
     return false;
-  return store_.consume(packet);
+  errno = 0;
+  const bool ok = store_.consume(packet);
+  if (!ok) {
+    ESP_LOGW("moto_tf",
+             "preset write rejected op=%u slot=%u offset=%lu/%lu errno=%d",
+             packet.operation, packet.slot,
+             static_cast<unsigned long>(packet.offset),
+             static_cast<unsigned long>(packet.total_size), errno);
+  } else if (packet.operation == 1 || packet.operation == 3) {
+    ESP_LOGI("moto_tf", "preset %s slot=%u bytes=%lu",
+             packet.operation == 1 ? "begin" : "committed", packet.slot,
+             static_cast<unsigned long>(packet.total_size));
+  }
+  return ok;
 }
 std::array<moto::presets::Entry, 4> PresetRouteService::entries() {
   const std::lock_guard<std::mutex> lock(mutex_);

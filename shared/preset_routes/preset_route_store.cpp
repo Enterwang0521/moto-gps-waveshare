@@ -24,7 +24,7 @@ uint32_t crc32(const uint8_t *data, size_t size) {
 Store::~Store() { abort(); }
 std::string Store::path(unsigned slot, char side, bool temp) const {
   return directory_ + "/" + std::to_string(slot) + side +
-         (temp ? ".tmp" : ".route");
+         (temp ? ".tmp" : ".rte");
 }
 void Store::abort() {
   if (file_)
@@ -33,6 +33,12 @@ void Store::abort() {
 }
 bool Store::read(unsigned slot, char side, Header &h) {
   FILE *f = fopen(path(slot, side).c_str(), "rb");
+  if (!f) {
+    // Read legacy files if the host filesystem supports long extensions.
+    const auto legacy =
+        directory_ + "/" + std::to_string(slot) + side + ".route";
+    f = fopen(legacy.c_str(), "rb");
+  }
   if (!f)
     return false;
   bool ok = fread(&h, 1, sizeof(h), f) == sizeof(h) && h.magic == 0x3152504d &&
